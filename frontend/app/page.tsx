@@ -4,7 +4,7 @@ import "./globals.css"
 
 export default function Home() {
   return (
-    <main className="container">
+    <main className="page-container">
       <MainHeading/>
       <DropBox />
     </main>
