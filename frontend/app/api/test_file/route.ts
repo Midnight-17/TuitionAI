@@ -46,6 +46,7 @@ export async function GET() {
             teacher: newTeacher,
             student: newStudent,
         });
+        
 
     } catch (error) {
         console.error(error);
