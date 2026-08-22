@@ -9,10 +9,12 @@ const FileSchema = new Schema({
 
     },
 
-    questions: {
-        type: [Number],
-        default:[],
-    },
+    questions: [
+    {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Question",
+    }
+],
 
 });
 

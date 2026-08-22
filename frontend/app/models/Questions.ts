@@ -12,12 +12,12 @@ const QuestionsSchema = new Schema({
 
     },
 
-    Topic:{
+    topic:{
         type: String,
         required: true
     },
 
-    answer_key:{
+    answer_key_page:{
         type: [Number],
         default: []
     },
@@ -44,4 +44,5 @@ const QuestionsSchema = new Schema({
 
 
 
-const Questions = mongoose.models.Question || mongoose.model("Question", QuestionsSchema)
+const Question = mongoose.models.Question || mongoose.model("Question", QuestionsSchema)
+export default Question;

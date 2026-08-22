@@ -19,7 +19,7 @@ import { useState } from "react"
     const formData = new FormData()
     formData.append("file",file)
 
-    const response = await fetch('/api/prepqn',{
+    const response = await fetch('/api/analyse',{
       method: "POST",
       body: formData
     })
