@@ -13,8 +13,13 @@ const FileSchema = new Schema({
     {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Question",
+    }],
+
+    pdf_id:{
+        type: mongoose.Schema.Types.ObjectId,
+        required: true,
     }
-],
+
 
 });
 

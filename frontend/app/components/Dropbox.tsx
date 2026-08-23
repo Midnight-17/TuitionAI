@@ -28,7 +28,6 @@ import { useState } from "react"
     const data = await response.json()
     console.log(data)
     setMsg(data.message)
-    setResult(data.result)
 
     
   }
@@ -57,7 +56,6 @@ import { useState } from "react"
         <button onClick={analysePDF}>
           Analyse PDF
         </button>
-        <p>{result}</p>
 
     </div>
   )}

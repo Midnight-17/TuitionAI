@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { connectDB } from "@/lib/mongodb";
 import FileModel from "@/app/models/Files";
 import Question from "@/app/models/Questions";
+import { uploadPDF } from "@/lib/gridfs";
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY!,
@@ -29,6 +30,10 @@ export async function POST(request: Request) {
 
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
+        const pdfId = await uploadPDF(
+                buffer,
+                file.name,
+            );
 
         // --------------------------------
         // 2. Ask Gemini to analyse paper
@@ -184,7 +189,9 @@ Analyse EVERY question in the paper.
 
         const newFile = await FileModel.create({
             filename: file.name,
+            pdf_id: pdfId,
             questions: [],
+
         });
 
         // --------------------------------
