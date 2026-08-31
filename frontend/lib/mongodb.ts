@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
-import { ignoreListAnonymousStackFramesIfSandwiched } from "next/dist/next-devtools/server/shared";
-import { standardTextFormat } from "openai/helpers/standard-schema.mjs";
+
 
 const MONGODB_URI = process.env.MONGODB_URI;
 

@@ -17,6 +17,7 @@ export async function POST(request: Request) {
         // --------------------------------
 
         const formData = await request.formData();
+
         const file = formData.get("file") as File | null;
 
         if (!file) {
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
                 { message: "No file uploaded" },
                 { status: 400 }
             );
-        }
+        };
 
         console.log("File received:", file.name);
 
@@ -104,6 +105,22 @@ Determine the total marks awarded for the question.
 QUESTION NUMBER:
 Use the actual question number from the paper.
 
+SUBTOPIC:
+Identify the specific subtopic within the main Physics topic being tested.
+
+For example:
+Topic: Mechanics
+Subtopic: Kinematics
+
+Topic: Mechanics
+Subtopic: Forces and Newton's Laws
+
+Topic: Waves
+Subtopic: Superposition
+
+Topic: Electricity
+Subtopic: Electric Fields
+
 IMPORTANT JSON RULES:
 
 Return ONLY valid JSON.
@@ -117,12 +134,13 @@ Return exactly this structure:
 
 [
     {
-        "question_number": 1,
-        "page": [1],
-        "topic": "Kinematics",
-        "answer_key_page": [15],
-        "difficulty": 2,
-        "total_marks": 5
+    "question_number": 1,
+    "page": [1],
+    "topic": "Kinematics",
+    "subtopic": "Equations of Motion",
+    "answer_key_page": [15],
+    "difficulty": 2,
+    "total_marks": 5
     }
 ]
 
@@ -130,6 +148,7 @@ Every question MUST contain:
 - question_number
 - page
 - topic
+- subtopic
 - answer_key_page
 - difficulty
 - total_marks
@@ -189,9 +208,9 @@ Analyse EVERY question in the paper.
 
         const newFile = await FileModel.create({
             filename: file.name,
+            subject: "Physics",
             pdf_id: pdfId,
             questions: [],
-
         });
 
         // --------------------------------
@@ -205,6 +224,7 @@ Analyse EVERY question in the paper.
                 question_number: question.question_number,
                 page: question.page,
                 topic: question.topic,
+                subtopic: question.subtopic,
                 answer_key_page: question.answer_key_page,
                 difficulty: question.difficulty,
                 total_marks: question.total_marks,

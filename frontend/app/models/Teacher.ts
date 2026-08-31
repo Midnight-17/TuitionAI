@@ -1,37 +1,41 @@
-import mogoose, {Schema} from "mongoose"
-import Student from "./Student"
-import mongoose from "mongoose"
+import mongoose, { Schema } from "mongoose";
 
-const TeacherSchema = new Schema({
-    teacher_id:{
-        type:String,
-        required: true,
-        unique: true,
-    },
-    name: {
-        type: String,
-        required: true,
-    },
-
-    students:[{
-        Student_id:{
-            type: mongoose.Schema.Types.ObjectId,
-            ref:"Student"
+const TeacherSchema = new Schema(
+    {
+        teacher_id: {
+            type: String,
+            required: true,
+            unique: true,
         },
 
         name: {
             type: String,
-            required:true,
+            required: true,
         },
 
-        subject:{
-            type: String,
-            required: true
-        }
-    }],
-})
+        students: [
+            {
+                student: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "Student",
+                    required: true,
+                },
 
-const Teacher = 
-mongoose.models.Teacher || mongoose.model("Teacher",TeacherSchema)
+                subject: {
+                    type: String,
+                    required: true,
+                },
+            },
+        ],
+    },
+    {
+        timestamps: true,
+    }
+);
 
-export default Teacher
+const Teacher =
+    mongoose.models.Teacher ||
+    mongoose.model("Teacher", TeacherSchema);
+
+export default Teacher;
+

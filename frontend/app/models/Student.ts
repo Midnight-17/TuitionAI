@@ -1,48 +1,74 @@
-import mongoose, { Schema } from "mongoose"
+import mongoose, { Schema } from "mongoose";
 
-const StudentScehma = new Schema({
-    student_id: {
-        type: String,
-        required: true,
-        unique: true,
-    },
-    name: {
-        type: String, 
-        required: true,
-    },
-    teachers : [
-        {
-            teacher_id: {
-                type: mongoose.Schema.Types.ObjectId,
-                ref:"Teacher"
-            },
-            name:{
-                type: String,
-                required: true,
-            },
-            subject:{
-                type: String,
-                required: true
-            },
+const StudentSchema = new Schema(
+    {
+        student_id: {
+            type: String,
+            required: true,
+            unique: true,
         },
-    ],
-    subjects: [
-        {
-            name: {
-                type: String,
-                required: true,
-            },
-            topic_mastery:{
-                type: Number,
-                min:0,
-                max:100,
-                default: 0,
-            },
+
+        name: {
+            type: String,
+            required: true,
         },
-    ],
-});
 
+        teachers: [
+            {
+                teacher: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "Teacher",
+                    required: true,
+                },
 
-const Student = mongoose.models.Student || mongoose.model("Student", StudentScehma);
+                subject: {
+                    type: String,
+                    required: true,
+                },
+            },
+        ],
 
-export default Student
+        subjects: [
+            {
+                name: {
+                    type: String,
+                    required: true,
+                },
+
+                topics: [
+                    {
+                        name: {
+                            type: String,
+                            required: true,
+                        },
+
+                        subtopics: [
+                            {
+                                name: {
+                                    type: String,
+                                    required: true,
+                                },
+
+                                mastery: {
+                                    type: Number,
+                                    min: 0,
+                                    max: 100,
+                                    default: 0,
+                                },
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        timestamps: true,
+    }
+);
+
+const Student =
+    mongoose.models.Student ||
+    mongoose.model("Student", StudentSchema);
+
+export default Student;
