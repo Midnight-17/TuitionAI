@@ -21,10 +21,38 @@ export async function GET() {
             attempts: Attempt,
         };
 
+        const [students, teachers, files, questions, assignments, attempts] =
+            await Promise.all([
+                Student.find().select("_id student_id name subjects").lean(),
+                Teacher.find().select("_id teacher_id name").lean(),
+                File.find().select("_id filename subject").lean(),
+                Question.find()
+                    .select(
+                        "_id question_number topic subtopic difficulty total_marks file"
+                    )
+                    .lean(),
+                Assignment.find()
+                    .select("_id student teacher subject questions type status")
+                    .lean(),
+                Attempt.find()
+                    .select(
+                        "_id student assignment submission question marks_awarded is_correct"
+                    )
+                    .lean(),
+            ]);
+
         return NextResponse.json({
             success: true,
             message: "MongoDB connected and all models loaded successfully.",
             models: Object.keys(collections),
+            data: {
+                students,
+                teachers,
+                files,
+                questions,
+                assignments,
+                attempts,
+            },
         });
     } catch (error) {
         console.error("Database test failed:", error);

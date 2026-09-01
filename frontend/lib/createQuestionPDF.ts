@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { downloadPDF } from "@/lib/gridfs";
 
 type QuestionForPDF = {
-    file: mongoose.Types.ObjectId;
+    pdf_id: mongoose.Types.ObjectId;
     page: number[];
 };
 
@@ -17,13 +17,13 @@ export async function createQuestionPDF(
     const pdfCache = new Map<string, Buffer>();
 
     for (const question of questions) {
-        const fileId = question.file.toString();
+        const fileId = question.pdf_id.toString();
 
         let sourceBuffer = pdfCache.get(fileId);
 
         if (!sourceBuffer) {
             sourceBuffer = await downloadPDF(
-                question.file
+                question.pdf_id
             );
 
             pdfCache.set(fileId, sourceBuffer);

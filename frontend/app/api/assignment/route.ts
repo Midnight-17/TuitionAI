@@ -5,6 +5,21 @@ import Student from "@/app/models/Student";
 import Question from "@/app/models/Questions";
 import Assignment from "@/app/models/Assignment";
 
+export async function GET(request: Request) {
+    try {
+        await connectDB();
+        const assignmentId = new URL(request.url).searchParams.get("assignment_id");
+        if (!assignmentId) {
+            return NextResponse.json({ message: "assignment_id is required" }, { status: 400 });
+        }
+        const assignment = await Assignment.findById(assignmentId).select("_id questions").lean();
+        if (!assignment) return NextResponse.json({ message: "Assignment not found" }, { status: 404 });
+        return NextResponse.json({ assignment });
+    } catch (error) {
+        return NextResponse.json({ message: "Failed to find assignment" }, { status: 500 });
+    }
+}
+
 export async function POST(request: Request) {
     try {
         await connectDB();
@@ -103,7 +118,10 @@ export async function POST(request: Request) {
         // 4. Find questions for weak areas
         // --------------------------------
 
-        const selectedQuestions = [];
+        const selectedQuestions: Array<{
+            _id: { toString(): string };
+            difficulty: number;
+        }> = [];
 
         for (const subtopic of subtopics) {
             if (selectedQuestions.length >= number_of_questions) {
@@ -150,7 +168,7 @@ export async function POST(request: Request) {
                 }
 
                 const alreadySelected = selectedQuestions.some(
-                    (selected: any) =>
+                    (selected) =>
                         selected._id.toString() ===
                         question._id.toString()
                 );
@@ -184,7 +202,7 @@ export async function POST(request: Request) {
             teacher: teacher._id,
             subject,
             questions: selectedQuestions.map(
-                (question: any) => question._id
+                (question) => question._id
             ),
         });
 

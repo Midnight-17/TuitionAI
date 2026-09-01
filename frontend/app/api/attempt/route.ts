@@ -6,6 +6,7 @@ import Student from "@/app/models/Student";
 import Assignment from "@/app/models/Assignment";
 import Question from "@/app/models/Questions";
 import Attempt from "@/app/models/Attempt";
+import Submission from "@/app/models/Submissions";
 import FileModel from "@/app/models/Files";
 
 import { downloadPDF } from "@/lib/gridfs";
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
             student_id,
             assignment_id,
             question_id,
-            answer,
+            submission_id,
         } = body;
 
         // --------------------------------
@@ -36,12 +37,12 @@ export async function POST(request: Request) {
             !student_id ||
             !assignment_id ||
             !question_id ||
-            !answer
+            !submission_id
         ) {
             return NextResponse.json(
                 {
                     message:
-                        "student_id, assignment_id, question_id and answer are required",
+                        "student_id, assignment_id, question_id and submission_id are required",
                 },
                 { status: 400 }
             );
@@ -94,6 +95,31 @@ export async function POST(request: Request) {
                 {
                     message:
                         "Assignment does not belong to this student",
+                },
+                { status: 403 }
+            );
+        }
+
+        const submission = await Submission.findById(
+            submission_id
+        );
+
+        if (!submission) {
+            return NextResponse.json(
+                { message: "Submission not found" },
+                { status: 404 }
+            );
+        }
+
+        if (
+            submission.assignment.toString() !==
+                assignment._id.toString() ||
+            submission.student.toString() !== student._id.toString()
+        ) {
+            return NextResponse.json(
+                {
+                    message:
+                        "Submission does not belong to this student and assignment",
                 },
                 { status: 403 }
             );
@@ -180,6 +206,10 @@ export async function POST(request: Request) {
             question.answer_key_page
         );
 
+        const submittedPDF = await downloadPDF(
+            submission.submitted_pdf_id
+        );
+
         // --------------------------------
         // 11. Ask Gemini to evaluate
         // --------------------------------
@@ -198,7 +228,7 @@ You are grading a student's answer to a Physics question.
 You have been given:
 1. The original question.
 2. The official answer key / marking scheme.
-3. The student's submitted answer.
+3. The student's handwritten submitted PDF.
 
 Your job is to grade the student's answer according to the marking scheme.
 
@@ -270,10 +300,14 @@ Give concise feedback explaining what the student did well and/or what they need
                 {
                     type: "text",
                     text: `
-STUDENT ANSWER:
-
-${answer}
+The third document is the student's handwritten submission. Locate the answer corresponding to the supplied question and grade only that answer.
 `,
+                },
+
+                {
+                    type: "document",
+                    data: submittedPDF.toString("base64"),
+                    mime_type: "application/pdf",
                 },
             ],
         });
@@ -335,14 +369,13 @@ ${answer}
         const attempt = await Attempt.create({
             student: student._id,
             assignment: assignment._id,
+            submission: submission._id,
             question: question._id,
 
             type:
                 assignment.type === "diagnostic"
                     ? "diagnostic"
                     : "practice",
-
-            answer,
 
             is_correct: evaluation.is_correct,
 
@@ -355,6 +388,19 @@ ${answer}
             ai_feedback:
                 evaluation.ai_feedback ?? null,
         });
+
+        const completedAttempts = await Attempt.countDocuments({
+            assignment: assignment._id,
+        });
+
+        if (completedAttempts >= assignment.questions.length) {
+            assignment.status = "completed";
+            assignment.completed_at = new Date();
+        } else {
+            assignment.status = "in_progress";
+        }
+
+        await assignment.save();
 
         // --------------------------------
         // 15. Return result
