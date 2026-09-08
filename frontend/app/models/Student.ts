@@ -35,6 +35,13 @@ const StudentSchema = new Schema(
                     required: true,
                 },
 
+                topic_mastery: {
+                    type: Number,
+                    min: 0,
+                    max: 100,
+                    default: 0,
+                },
+
                 topics: [
                     {
                         name: {

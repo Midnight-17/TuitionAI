@@ -19,6 +19,11 @@ const AssignmentSchema = new Schema(
             required: true,
         },
 
+        name: {
+            type: String,
+            required: true,
+        },
+
         questions: [
             {
                 type: mongoose.Schema.Types.ObjectId,
@@ -60,4 +65,3 @@ const Assignment =
     mongoose.model("Assignment", AssignmentSchema);
 
 export default Assignment;
-

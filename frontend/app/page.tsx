@@ -3,20 +3,5 @@ import "./globals.css"
 
 
 export default function Home() {
-  return (
-    <main className="page-container">
-      <MainHeading/>
-      <DropBox />
-    </main>
-  )
+  return <DropBox />
 }
-
-function MainHeading(){
-  return(
-  <>
-  <h1 
-  className="heading"
-  >Nishanths Page </h1>
-</>
-)}
-

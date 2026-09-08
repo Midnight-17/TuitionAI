@@ -4,6 +4,7 @@ import Teacher from "@/app/models/Teacher";
 import Student from "@/app/models/Student";
 import Question from "@/app/models/Questions";
 import Assignment from "@/app/models/Assignment";
+import Attempt from "@/app/models/Attempt";
 
 export async function GET(request: Request) {
     try {
@@ -12,9 +13,18 @@ export async function GET(request: Request) {
         if (!assignmentId) {
             return NextResponse.json({ message: "assignment_id is required" }, { status: 400 });
         }
-        const assignment = await Assignment.findById(assignmentId).select("_id questions").lean();
+        const assignment = await Assignment.findById(assignmentId)
+            .select("_id student teacher subject name questions type status assigned_at completed_at")
+            .lean();
         if (!assignment) return NextResponse.json({ message: "Assignment not found" }, { status: 404 });
-        return NextResponse.json({ assignment });
+        const attempts = await Attempt.find({ assignment: assignmentId })
+            .select("question marks_awarded is_correct misconception ai_feedback attempted_at")
+            .lean();
+        return NextResponse.json({
+            assignment,
+            progress: { completed: attempts.length, total: assignment.questions.length },
+            attempts,
+        });
     } catch (error) {
         return NextResponse.json({ message: "Failed to find assignment" }, { status: 500 });
     }
@@ -30,7 +40,7 @@ export async function POST(request: Request) {
             student_id,
             teacher_id,
             subject,
-            number_of_questions = 10,
+            number_of_questions = 1,
         } = body;
 
         if (!student_id || !teacher_id || !subject) {
@@ -56,6 +66,10 @@ export async function POST(request: Request) {
                 },
                 { status: 404 }
             );
+        }
+
+        if (!Number.isInteger(number_of_questions) || number_of_questions !== 1) {
+            return NextResponse.json({ message: "Daily practice assignments contain exactly one OEQ" }, { status: 400 });
         }
         const teacher = await Teacher.findOne({ teacher_id });
 
@@ -114,6 +128,16 @@ export async function POST(request: Request) {
 
         subtopics.sort((a, b) => a.mastery - b.mastery);
 
+        const previousAssignment = await Assignment.findOne({
+            student: student._id,
+            subject,
+            type: "practice",
+        }).sort({ createdAt: -1 }).lean();
+        const previousQuestion = previousAssignment?.questions.at(-1);
+        const previousQuestionData = previousQuestion
+            ? await Question.findById(previousQuestion).select("topic").lean()
+            : null;
+
         // --------------------------------
         // 4. Find questions for weak areas
         // --------------------------------
@@ -121,6 +145,7 @@ export async function POST(request: Request) {
         const selectedQuestions: Array<{
             _id: { toString(): string };
             difficulty: number;
+            topic: string;
         }> = [];
 
         for (const subtopic of subtopics) {
@@ -173,10 +198,18 @@ export async function POST(request: Request) {
                         question._id.toString()
                 );
 
-                if (!alreadySelected) {
+                if (!alreadySelected && question._id.toString() !== previousQuestion?.toString() && question.topic !== previousQuestionData?.topic) {
                     selectedQuestions.push(question);
                 }
             }
+        }
+
+        if (selectedQuestions.length === 0 && previousQuestionData) {
+            const fallback = await Question.findOne({
+                topic: { $in: subjectData.topics.map((topic: any) => topic.name) },
+                _id: { $ne: previousQuestion },
+            }).sort({ difficulty: 1 });
+            if (fallback) selectedQuestions.push(fallback);
         }
 
         // --------------------------------
@@ -197,10 +230,16 @@ export async function POST(request: Request) {
         // 7. Create Assignment
         // --------------------------------
 
+        const practiceAssignments = await Assignment.find({ student: student._id, type: "practice", subject }).select("questions").lean();
+        const practiceQuestionIds = practiceAssignments.flatMap((item) => item.questions);
+        const practiceQuestions = await Question.find({ _id: { $in: practiceQuestionIds } }).select("topic").lean();
+        const topicCount = practiceQuestions.filter((question) => question.topic === selectedQuestions[0].topic).length;
+
         const assignment = await Assignment.create({
             student: student._id,
             teacher: teacher._id,
             subject,
+            name: `${student.name}_${selectedQuestions[0].topic.replace(/\s+/g, "_")}_${topicCount + 1}`,
             questions: selectedQuestions.map(
                 (question) => question._id
             ),

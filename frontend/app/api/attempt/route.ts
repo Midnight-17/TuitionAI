@@ -11,6 +11,7 @@ import FileModel from "@/app/models/Files";
 
 import { downloadPDF } from "@/lib/gridfs";
 import { extractPDFPages } from "@/lib/pdf";
+import { updateMasteryFromAssignment } from "@/lib/mastery";
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY!,
@@ -143,6 +144,19 @@ export async function POST(request: Request) {
                         "Question does not belong to this assignment",
                 },
                 { status: 400 }
+            );
+        }
+
+        const existingAttempt = await Attempt.findOne({
+            student: student._id,
+            assignment: assignment._id,
+            submission: submission._id,
+            question: question_id,
+        });
+        if (existingAttempt) {
+            return NextResponse.json(
+                { message: "This question has already been marked", attempt: existingAttempt },
+                { status: 409 },
             );
         }
 
@@ -396,11 +410,16 @@ The third document is the student's handwritten submission. Locate the answer co
         if (completedAttempts >= assignment.questions.length) {
             assignment.status = "completed";
             assignment.completed_at = new Date();
+            submission.status = "completed";
+            submission.completed_at = new Date();
+            await updateMasteryFromAssignment(assignment._id.toString(), student._id.toString());
         } else {
             assignment.status = "in_progress";
+            submission.status = "processing";
         }
 
         await assignment.save();
+        await submission.save();
 
         // --------------------------------
         // 15. Return result

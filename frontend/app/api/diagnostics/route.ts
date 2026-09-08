@@ -196,6 +196,7 @@ export async function POST(request: Request) {
             student: student._id,
             teacher: teacher._id,
             subject,
+            name: `${student.name}_${subject.replace(/\s+/g, "_")}_diagnostic`,
             type: "diagnostic",
             questions: selectedQuestions.map(
                 (question: any) => question._id
