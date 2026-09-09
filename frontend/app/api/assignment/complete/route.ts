@@ -3,7 +3,27 @@ import { connectDB } from "@/lib/mongodb";
 import Assignment from "@/app/models/Assignment";
 import Attempt from "@/app/models/Attempt";
 import Submission from "@/app/models/Submissions";
+import Student from "@/app/models/Student";
 import { updateMasteryFromAssignment } from "@/lib/mastery";
+
+function getCompletionDateParts(date: Date) {
+    const yearStart = new Date(date.getFullYear(), 0, 1);
+    const currentDay = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+    );
+    const yearDay = Math.floor(
+        (currentDay.getTime() - yearStart.getTime()) / 86400000,
+    ) + 1;
+
+    return {
+        year: date.getFullYear(),
+        month: date.getMonth() + 1,
+        dayOfMonth: date.getDate(),
+        dayOfYear: yearDay,
+    };
+}
 
 export async function POST(request: Request) {
     try {
@@ -30,6 +50,32 @@ export async function POST(request: Request) {
         submission.completed_at = submission.completed_at ?? new Date();
         await Promise.all([assignment.save(), submission.save()]);
         await updateMasteryFromAssignment(assignment._id.toString(), assignment.student.toString());
+
+        const student = await Student.findById(assignment.student);
+
+        if (student) {
+            const completionDate = getCompletionDateParts(new Date());
+
+            if (student.streak_year !== completionDate.year) {
+                student.year_streak = [];
+                student.monthly_streak = [];
+                student.streak_year = completionDate.year;
+                student.streak_month = completionDate.month;
+            } else if (student.streak_month !== completionDate.month) {
+                student.monthly_streak = [];
+                student.streak_month = completionDate.month;
+            }
+
+            if (!student.year_streak.includes(completionDate.dayOfYear)) {
+                student.year_streak.push(completionDate.dayOfYear);
+            }
+
+            if (!student.monthly_streak.includes(completionDate.dayOfMonth)) {
+                student.monthly_streak.push(completionDate.dayOfMonth);
+            }
+
+            await student.save();
+        }
 
         return NextResponse.json({ message: "Assignment finalized successfully", assignment, submission });
     } catch (error) {

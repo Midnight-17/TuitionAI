@@ -6,7 +6,13 @@ import type { ReactNode } from "react"
 type Subtopic = { name: string; mastery: number }
 type Topic = { name: string; mastery?: number; subtopics?: Subtopic[] }
 type Subject = { name: string; topics?: Topic[] }
-type Student = { name: string; subjects?: Subject[] }
+type Student = {
+  name: string
+  exam_date?: string | null
+  subjects?: Subject[]
+  year_streak?: number[]
+  monthly_streak?: number[]
+}
 
 
 type ProgressRow = {
@@ -45,9 +51,6 @@ const demoRows: ProgressRow[] = [
   },
 ]
 
-const calendarDays = Array.from({ length: 35 }, (_, index) => index - 5)
-const completedDays = new Set([6, 7, 8, 9, 10, 11, 13, 14, 15])
-
 // Use the user's local date so the picker does not shift by a day across timezones.
 function getTodayIso() {
   const today = new Date()
@@ -56,6 +59,51 @@ function getTodayIso() {
   const day = String(today.getDate()).padStart(2, "0")
 
   return `${year}-${month}-${day}`
+}
+
+type CalendarDay = {
+  day: number
+  isCurrentMonth: boolean
+  isToday: boolean
+}
+
+function getCalendarDays(date: Date): CalendarDay[] {
+  const year = date.getFullYear()
+  const month = date.getMonth()
+  const today = new Date()
+  const firstDayOffset = (new Date(year, month, 1).getDay() + 6) % 7
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const daysInPreviousMonth = new Date(year, month, 0).getDate()
+  const totalCells = Math.ceil((firstDayOffset + daysInMonth) / 7) * 7
+
+  return Array.from({ length: totalCells }, (_, index) => {
+    if (index < firstDayOffset) {
+      return {
+        day: daysInPreviousMonth - firstDayOffset + index + 1,
+        isCurrentMonth: false,
+        isToday: false,
+      }
+    }
+
+    if (index >= firstDayOffset + daysInMonth) {
+      return {
+        day: index - firstDayOffset - daysInMonth + 1,
+        isCurrentMonth: false,
+        isToday: false,
+      }
+    }
+
+    const day = index - firstDayOffset + 1
+
+    return {
+      day,
+      isCurrentMonth: true,
+      isToday:
+        today.getFullYear() === year &&
+        today.getMonth() === month &&
+        today.getDate() === day,
+    }
+  })
 }
 
 export default function DropBox() {
@@ -96,6 +144,8 @@ export default function DropBox() {
 
   useEffect(() => {
     const loadStudent = async () => {
+      setExamDate("")
+
       const response = await fetch(
         `/api/student?student_id=${encodeURIComponent(studentId)}`,
       )
@@ -103,6 +153,7 @@ export default function DropBox() {
 
       const data = (await response.json()) as { student: Student }
       setStudent(data.student)
+      setExamDate(data.student.exam_date?.slice(0, 10) ?? "")
     }
 
     void loadStudent()
@@ -137,8 +188,11 @@ export default function DropBox() {
     })
   }, [student, subject])
 
+  const monthlyStreak = student?.monthly_streak?.length ?? 0
+  const yearlyStreak = student?.year_streak?.length ?? 0
+
   const daysToExam = useMemo(() => {
-    if (!examDate) return 68
+    if (!examDate) return 0
 
     const today = new Date()
     const exam = new Date(`${examDate}T00:00:00`)
@@ -147,6 +201,29 @@ export default function DropBox() {
       Math.ceil((exam.getTime() - today.getTime()) / 86400000),
     )
   }, [examDate])
+
+  async function updateExamDate(value: string) {
+    setExamDate(value)
+
+    const response = await fetch("/api/student", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        student_id: studentId,
+        exam_date: value,
+      }),
+    })
+
+    if (!response.ok) {
+      setStatus("Could not save exam date.")
+      return
+    }
+
+    const data = (await response.json()) as { student: Student }
+    setStudent(data.student)
+  }
 
   async function downloadDiagnostic() {
     setStatus("Creating diagnostic...")
@@ -297,7 +374,9 @@ export default function DropBox() {
         <StreaksView
           daysToExam={daysToExam}
           examDate={examDate}
-          setExamDate={setExamDate}
+          onExamDateChange={updateExamDate}
+          monthlyStreak={monthlyStreak}
+          yearlyStreak={yearlyStreak}
         />
       ) : (
         <ProgressView
@@ -389,13 +468,26 @@ export default function DropBox() {
 function StreaksView({
   daysToExam,
   examDate,
-  setExamDate,
+  onExamDateChange,
+  monthlyStreak,
+  yearlyStreak,
 }: {
   daysToExam: number
   examDate: string
-  setExamDate: (value: string) => void
+  onExamDateChange: (value: string) => void
+  monthlyStreak: number
+  yearlyStreak: number
 }) {
   const examDateRef = useRef<HTMLInputElement>(null)
+  const calendarDate = useMemo(() => new Date(), [])
+  const calendarDays = useMemo(
+    () => getCalendarDays(calendarDate),
+    [calendarDate],
+  )
+  const currentMonthName = calendarDate.toLocaleString("en-US", {
+    month: "long",
+  })
+  const currentYear = calendarDate.getFullYear()
 
   return (
     <section className="content-area">
@@ -410,7 +502,7 @@ function StreaksView({
                 className="change-date-trigger"
                 onClick={() => examDateRef.current?.showPicker?.()}
               >
-              Change date
+                Change date
               </button>
               <input
                 ref={examDateRef}
@@ -418,21 +510,29 @@ function StreaksView({
                 type="date"
                 min={getTodayIso()}
                 value={examDate}
-                onChange={(event) => setExamDate(event.target.value)}
+                onChange={(event) =>
+                  onExamDateChange(event.target.value)
+                }
               />
-          </div>
+            </div>
           }
         />
-        <Stat label="Month's streak" value="12" />
-        <Stat label="Year's streak" value="47" />
+        <Stat
+          label="Month's streak"
+          value={String(monthlyStreak)}
+        />
+        <Stat
+          label="Year's streak"
+          value={String(yearlyStreak)}
+        />
       </div>
 
       <div className="calendar-heading">
         <div>
           <p className="eyebrow">Streaks</p>
-          <h2>September</h2>
+          <h2>{currentMonthName}</h2>
         </div>
-        <span>2026</span>
+        <span>{currentYear}</span>
       </div>
 
       <div className="calendar">
@@ -444,19 +544,11 @@ function StreaksView({
         <div className="calendar-grid">
           {calendarDays.map((day, index) => (
             <div
-              className={`day ${day < 1 || day > 30 ? "muted" : ""}`}
-              key={`${day}-${index}`}
+              className={`day ${day.isCurrentMonth ? "" : "muted"}`}
+              key={`${day.day}-${index}`}
             >
-              <span
-                className={
-                  completedDays.has(day)
-                    ? "completed-marker"
-                    : day === 16
-                      ? "today-marker"
-                      : ""
-                }
-              >
-                {day > 0 ? day : 31}
+              <span className={day.isToday ? "today-marker" : ""}>
+                {day.day}
               </span>
             </div>
           ))}

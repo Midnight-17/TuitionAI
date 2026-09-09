@@ -13,6 +13,31 @@ const StudentSchema = new Schema(
             required: true,
         },
 
+        exam_date: {
+            type: Date,
+            default: null,
+        },
+
+        year_streak: {
+            type: [Number],
+            default: [],
+        },
+
+        monthly_streak: {
+            type: [Number],
+            default: [],
+        },
+
+        streak_year: {
+            type: Number,
+            default: () => new Date().getFullYear(),
+        },
+
+        streak_month: {
+            type: Number,
+            default: () => new Date().getMonth() + 1,
+        },
+
         teachers: [
             {
                 teacher: {
