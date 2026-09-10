@@ -28,7 +28,7 @@ export async function GET() {
                 File.find().select("_id filename subject").lean(),
                 Question.find()
                     .select(
-                        "_id question_number topic subtopic difficulty total_marks file"
+                        "_id question_number topic subtopic subtopics difficulty total_marks file"
                     )
                     .lean(),
                 Assignment.find()

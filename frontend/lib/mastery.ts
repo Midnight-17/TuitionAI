@@ -16,11 +16,23 @@ export async function updateMasteryFromAssignment(
     for (const attempt of attempts) {
         const question = questionsById.get(attempt.question.toString());
         if (!question) continue;
-        const key = `${question.topic}::${question.subtopic}`;
-        const current = scores.get(key) ?? { awarded: 0, total: 0, topic: question.topic };
-        current.awarded += attempt.marks_awarded;
-        current.total += question.total_marks;
-        scores.set(key, current);
+        const subtopics = question.subtopics?.length
+            ? question.subtopics
+            : question.subtopic
+                ? [question.subtopic]
+                : [];
+
+        for (const subtopic of subtopics) {
+            const key = `${question.topic}::${subtopic}`;
+            const current = scores.get(key) ?? {
+                awarded: 0,
+                total: 0,
+                topic: question.topic,
+            };
+            current.awarded += attempt.marks_awarded;
+            current.total += question.total_marks;
+            scores.set(key, current);
+        }
     }
 
     const student = await Student.findById(studentId).lean();

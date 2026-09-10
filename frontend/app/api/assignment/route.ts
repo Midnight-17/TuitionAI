@@ -159,7 +159,10 @@ export async function POST(request: Request) {
                         (topic: any) => topic.name
                     ),
                 },
-                subtopic: subtopic.name,
+                $or: [
+                    { subtopics: subtopic.name },
+                    { subtopic: subtopic.name },
+                ],
             });
 
             // --------------------------------

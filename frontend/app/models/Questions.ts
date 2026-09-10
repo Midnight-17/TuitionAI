@@ -17,9 +17,15 @@ const QuestionsSchema = new Schema(
             required: true,
         },
 
+        // Kept temporarily for questions imported before subtopics became an array.
         subtopic: {
             type: String,
-            required: true,
+            required: false,
+        },
+
+        subtopics: {
+            type: [String],
+            default: [],
         },
 
         answer_key_page: {

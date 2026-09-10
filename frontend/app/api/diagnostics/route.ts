@@ -110,11 +110,19 @@ export async function POST(request: Request) {
         } = {};
 
         for (const question of questions) {
-            if (!questionsBySubtopic[question.subtopic]) {
-                questionsBySubtopic[question.subtopic] = [];
-            }
+            const subtopics = question.subtopics?.length
+                ? question.subtopics
+                : question.subtopic
+                    ? [question.subtopic]
+                    : [];
 
-            questionsBySubtopic[question.subtopic].push(question);
+            for (const subtopic of subtopics) {
+                if (!questionsBySubtopic[subtopic]) {
+                    questionsBySubtopic[subtopic] = [];
+                }
+
+                questionsBySubtopic[subtopic].push(question);
+            }
         }
 
         const subtopics = Object.keys(questionsBySubtopic);
@@ -135,6 +143,7 @@ export async function POST(request: Request) {
         // --------------------------------
 
         const selectedQuestions: any[] = [];
+        const selectedQuestionIds = new Set<string>();
 
         let index = 0;
 
@@ -156,9 +165,14 @@ export async function POST(request: Request) {
                     questionsBySubtopic[subtopic];
 
                 if (index < availableQuestions.length) {
-                    selectedQuestions.push(
-                        availableQuestions[index]
-                    );
+                    const question = availableQuestions[index];
+
+                    if (selectedQuestionIds.has(question._id.toString())) {
+                        continue;
+                    }
+
+                    selectedQuestions.push(question);
+                    selectedQuestionIds.add(question._id.toString());
 
                     addedQuestion = true;
                 }

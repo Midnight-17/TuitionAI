@@ -13,6 +13,26 @@ const TeacherSchema = new Schema(
             required: true,
         },
 
+        teaching_scopes: [
+            {
+                subject: {
+                    type: String,
+                    required: true,
+                },
+
+                level: {
+                    type: String,
+                    enum: ["H2"],
+                    required: true,
+                },
+
+                selected_topics: {
+                    type: [Number],
+                    default: [],
+                },
+            },
+        ],
+
         students: [
             {
                 student: {
@@ -38,4 +58,3 @@ const Teacher =
     mongoose.model("Teacher", TeacherSchema);
 
 export default Teacher;
-

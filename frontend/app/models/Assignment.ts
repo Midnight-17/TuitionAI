@@ -54,6 +54,11 @@ const AssignmentSchema = new Schema(
             type: Date,
             default: null,
         },
+
+        practice_date: {
+            type: Date,
+            default: null,
+        },
     },
     {
         timestamps: true,

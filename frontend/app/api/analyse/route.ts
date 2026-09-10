@@ -3,6 +3,11 @@ import { connectDB } from "@/lib/mongodb";
 import FileModel from "@/app/models/Files";
 import Question from "@/app/models/Questions";
 import { uploadPDF } from "@/lib/gridfs";
+import { h2PhysicsTopics } from "@/app/data/h2PhysicsTopics";
+
+const validTopicNames = new Set(
+    h2PhysicsTopics.map((topic) => topic.topic),
+);
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY!,
@@ -105,21 +110,23 @@ Determine the total marks awarded for the question.
 QUESTION NUMBER:
 Use the actual question number from the paper.
 
-SUBTOPIC:
-Identify the specific subtopic within the main Physics topic being tested.
+SUBTOPICS:
+Identify ALL specific subtopics within the main Physics topic being tested.
+A question may test more than one subtopic.
+Return every relevant subtopic in a "subtopics" array.
 
 For example:
-Topic: Mechanics
-Subtopic: Kinematics
+Topic: Motion and Forces
+Subtopics: ["Kinematics", "Laws of motion"]
 
-Topic: Mechanics
-Subtopic: Forces and Newton's Laws
+Topic: Motion and Forces
+Subtopics: ["Forces and moments"]
 
-Topic: Waves
-Subtopic: Superposition
+Topic: Superposition
+Subtopics: ["Superposition"]
 
-Topic: Electricity
-Subtopic: Electric Fields
+Topic: Electric Fields
+Subtopics: ["Coulomb's law", "Electric field strength"]
 
 IMPORTANT JSON RULES:
 
@@ -136,8 +143,8 @@ Return exactly this structure:
     {
     "question_number": 1,
     "page": [1],
-    "topic": "Kinematics",
-    "subtopic": "Equations of Motion",
+    "topic": "Motion and Forces",
+    "subtopics": ["Kinematics", "Uniformly accelerated linear motion"],
     "answer_key_page": [15],
     "difficulty": 2,
     "total_marks": 5
@@ -148,7 +155,7 @@ Every question MUST contain:
 - question_number
 - page
 - topic
-- subtopic
+- subtopics
 - answer_key_page
 - difficulty
 - total_marks
@@ -202,6 +209,30 @@ Analyse EVERY question in the paper.
             );
         }
 
+        if (
+            !Array.isArray(questions) ||
+            questions.some(
+                (question) =>
+                    typeof question.topic !== "string" ||
+                    !validTopicNames.has(question.topic) ||
+                    !Array.isArray(question.subtopics) ||
+                    question.subtopics.length === 0 ||
+                    question.subtopics.some(
+                        (subtopic: unknown) =>
+                            typeof subtopic !== "string" ||
+                            subtopic.trim() === "",
+                    ),
+            )
+        ) {
+            return Response.json(
+                {
+                    message:
+                        "Each question must have a valid H2 Physics topic and at least one subtopic",
+                },
+                { status: 400 },
+            );
+        }
+
         // --------------------------------
         // 6. Create the File document
         // --------------------------------
@@ -224,7 +255,7 @@ Analyse EVERY question in the paper.
                 question_number: question.question_number,
                 page: question.page,
                 topic: question.topic,
-                subtopic: question.subtopic,
+                subtopics: [...new Set(question.subtopics)],
                 answer_key_page: question.answer_key_page,
                 difficulty: question.difficulty,
                 total_marks: question.total_marks,
