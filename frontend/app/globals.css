@@ -641,6 +641,14 @@ button {
   display: none;
 }
 
+.upload-button {
+  cursor: pointer;
+}
+
+.upload-button input {
+  display: none;
+}
+
 .status {
   color: var(--muted);
   font-size: 13px;
@@ -681,24 +689,55 @@ button {
 
   .stat-row {
     margin-bottom: 48px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .stat {
     padding: 0 10px;
-    min-height: 110px;
+    min-height: 130px;
   }
 
   .stat strong {
-    font-size: 48px;
+    font-size: clamp(42px, 8vw, 58px);
+  }
+
+  .stat:nth-child(2) {
+    border-left: 1px solid var(--line);
+  }
+
+  .stat:nth-child(3) {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+  }
+
+  .stat:last-child {
+    padding-right: 10px;
+  }
+
+  .change-date {
+    right: 10px;
+    bottom: 14px;
   }
 
   .day {
-    min-height: 90px;
-    padding: 12px 8px;
+    min-height: 82px;
+    padding: 12px 7px;
   }
 
   .day > span {
     font-size: 16px;
+  }
+
+  .completed-marker::before {
+    width: 32px;
+    height: 32px;
+  }
+
+  .today-marker::after {
+    width: 24px;
+    bottom: -9px;
   }
 
   .weekday-row span {
@@ -735,8 +774,187 @@ button {
     width: 100%;
   }
 
+  .practice-fields,
+  .practice-actions {
+    flex-direction: column;
+  }
+
+  .practice-actions button,
+  .file-drop,
+  .upload-button {
+    width: 100%;
+    text-align: center;
+  }
+
   .calendar-meta,
   .legend {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-shell {
+    width: min(100% - 28px, 1480px);
+  }
+
+  .brand {
+    gap: 10px;
+    font-size: 19px;
+  }
+
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    border-width: 3px;
+  }
+
+  .dashboard-intro {
+    padding-top: 42px;
+  }
+
+  .dashboard-intro h1 {
+    font-size: clamp(42px, 13vw, 62px);
+    line-height: 0.95;
+    margin-bottom: 48px;
+  }
+
+  .tabs {
+    gap: 28px;
+  }
+
+  .tab {
+    font-size: 16px;
+  }
+
+  .tab-indicator {
+    width: 58px;
+  }
+
+  .tab-indicator.progress {
+    transform: translateX(86px);
+  }
+
+  .content-area {
+    padding-top: 42px;
+  }
+
+  .stat-row {
+    display: block;
+    margin-bottom: 48px;
+  }
+
+  .stat,
+  .stat:nth-child(2),
+  .stat:nth-child(3) {
+    min-height: 128px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 20px 0 28px;
+  }
+
+  .stat:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .stat:last-child {
+    padding-right: 0;
+  }
+
+  .change-date {
+    right: 0;
+    bottom: 15px;
+  }
+
+  .calendar-heading,
+  .calendar,
+  .notes {
+    width: 100%;
+  }
+
+  .calendar-heading {
+    margin-bottom: 20px;
+  }
+
+  .calendar-heading h2 {
+    font-size: clamp(38px, 12vw, 58px);
+  }
+
+  .calendar-heading > span {
+    font-size: 13px;
+  }
+
+  .weekday-row span {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    padding: 13px 2px;
+    text-align: center;
+  }
+
+  .day {
+    min-height: 70px;
+    padding: 10px 5px;
+  }
+
+  .day > span {
+    font-size: 14px;
+  }
+
+  .completed-marker::before {
+    width: 26px;
+    height: 26px;
+  }
+
+  .today-marker::after {
+    width: 20px;
+    height: 2px;
+    bottom: -8px;
+  }
+
+  .calendar-meta,
+  .legend {
+    gap: 16px;
+    font-size: 11px;
+  }
+
+  .progress-row {
+    padding: 24px 0 28px;
+  }
+
+  .topic-cell strong {
+    font-size: 19px;
+  }
+
+  .attempt {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-shell {
+    width: min(100% - 22px, 1480px);
+  }
+
+  .dashboard-intro h1 {
+    font-size: 40px;
+  }
+
+  .tabs {
+    gap: 22px;
+  }
+
+  .tab-indicator.progress {
+    transform: translateX(78px);
+  }
+
+  .weekday-row span {
+    font-size: 7px;
+  }
+
+  .day {
+    min-height: 64px;
+    padding-left: 3px;
+    padding-right: 3px;
   }
 }

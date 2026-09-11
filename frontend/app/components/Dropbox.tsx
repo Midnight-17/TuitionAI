@@ -2,10 +2,17 @@
 
 import { useEffect, useMemo, useState, useRef } from "react"
 import type { ReactNode } from "react"
+import { h2PhysicsTopics } from "@/app/data/h2PhysicsTopics"
 
 type Subtopic = { name: string; mastery: number }
 type Topic = { name: string; mastery?: number; subtopics?: Subtopic[] }
 type Subject = { name: string; topics?: Topic[] }
+type TeachingScope = {
+  subject: string
+  level: string
+  selected_topics: number[]
+}
+type Teacher = { teaching_scopes?: TeachingScope[] }
 type Student = {
   name: string
   exam_date?: string | null
@@ -23,33 +30,6 @@ type ProgressRow = {
   tone: "good" | "medium" | "needs"
   attempts: string[]
 }
-
-const demoRows: ProgressRow[] = [
-  {
-    name: "Linear equations",
-    subject: "Algebra · 8 questions",
-    mastery: 92,
-    latest: "Good",
-    tone: "good",
-    attempts: ["01", "02"],
-  },
-  {
-    name: "Quadratic functions",
-    subject: "Algebra · 6 questions",
-    mastery: 68,
-    latest: "Medium",
-    tone: "medium",
-    attempts: ["01", "02", "03"],
-  },
-  {
-    name: "Trigonometric ratios",
-    subject: "Geometry · 10 questions",
-    mastery: 41,
-    latest: "Needs work",
-    tone: "needs",
-    attempts: ["01"],
-  },
-]
 
 // Use the user's local date so the picker does not shift by a day across timezones.
 function getTodayIso() {
@@ -109,6 +89,7 @@ function getCalendarDays(date: Date): CalendarDay[] {
 export default function DropBox() {
   const [tab, setTab] = useState<"streaks" | "progress">("streaks")
   const [student, setStudent] = useState<Student | null>(null)
+  const [selectedTopicNumbers, setSelectedTopicNumbers] = useState<number[]>([])
   const [studentId, setStudentId] = useState("S001")
   const [teacherId, setTeacherId] = useState("T001")
   const [subject, setSubject] = useState("Physics")
@@ -117,19 +98,23 @@ export default function DropBox() {
   const [assignmentId, setAssignmentId] = useState<string | null>(() =>
     typeof window === "undefined"
       ? null
-      : localStorage.getItem("diagnosticAssignmentId"),
+      : localStorage.getItem("dailyAssignmentId") ||
+        localStorage.getItem("diagnosticAssignmentId"),
   )
   const [submissionId, setSubmissionId] = useState<string | null>(() =>
     typeof window === "undefined"
       ? null
-      : localStorage.getItem("diagnosticSubmissionId"),
+      : localStorage.getItem("dailySubmissionId") ||
+        localStorage.getItem("diagnosticSubmissionId"),
   )
   const [questionIds, setQuestionIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return []
 
     try {
       const saved = JSON.parse(
-        localStorage.getItem("diagnosticQuestionIds") || "[]",
+        localStorage.getItem("dailyQuestionIds") ||
+          localStorage.getItem("diagnosticQuestionIds") ||
+          "[]",
       )
       return Array.isArray(saved) ? (saved as string[]) : []
     } catch {
@@ -141,6 +126,7 @@ export default function DropBox() {
   >([])
   const [status, setStatus] = useState("")
   const [showPractice, setShowPractice] = useState(false)
+  const [dailyQuestionReady, setDailyQuestionReady] = useState(false)
 
   useEffect(() => {
     const loadStudent = async () => {
@@ -154,39 +140,58 @@ export default function DropBox() {
       const data = (await response.json()) as { student: Student }
       setStudent(data.student)
       setExamDate(data.student.exam_date?.slice(0, 10) ?? "")
+
+      const teacherResponse = await fetch(
+        `/api/teacher?teacher_id=${encodeURIComponent(teacherId)}`,
+      )
+      if (!teacherResponse.ok) {
+        setSelectedTopicNumbers([])
+        return
+      }
+
+      const teacherData = (await teacherResponse.json()) as {
+        teacher: Teacher
+      }
+      const physicsScope = teacherData.teacher.teaching_scopes?.find(
+        (scope) => scope.subject === "Physics" && scope.level === "H2",
+      )
+      setSelectedTopicNumbers(physicsScope?.selected_topics ?? [])
     }
 
     void loadStudent()
-  }, [studentId])
+  }, [studentId, teacherId])
 
   const progressRows = useMemo<ProgressRow[]>(() => {
-    const topics =
+    const studentTopics =
       student?.subjects?.find((item) => item.name === subject)?.topics ?? []
 
-    if (topics.length === 0) return demoRows
+    return h2PhysicsTopics
+      .filter((topic) => selectedTopicNumbers.includes(topic.topicNumber))
+      .map((officialTopic) => {
+        const topic = studentTopics.find(
+          (studentTopic) => studentTopic.name === officialTopic.topic,
+        )
+        const values = topic?.subtopics?.map((item) => item.mastery) ?? []
+        const mastery =
+          topic?.mastery ??
+          (values.length
+            ? Math.round(
+                values.reduce((sum, value) => sum + value, 0) / values.length,
+              )
+            : 0)
+        const tone = mastery >= 80 ? "good" : mastery >= 60 ? "medium" : "needs"
 
-    return topics.map((topic, index) => {
-      const values = topic.subtopics?.map((item) => item.mastery) ?? []
-      const mastery =
-        topic.mastery ??
-        (values.length
-          ? Math.round(
-              values.reduce((sum, value) => sum + value, 0) / values.length,
-            )
-          : 0)
-      const tone = mastery >= 80 ? "good" : mastery >= 60 ? "medium" : "needs"
-
-      return {
-        name: topic.name,
-        subject: `${subject} · ${values.length || 0} subtopics`,
-        mastery,
-        latest:
-          tone === "good" ? "Good" : tone === "medium" ? "Medium" : "Needs work",
-        tone,
-        attempts: [String(index + 1).padStart(2, "0")],
-      }
-    })
-  }, [student, subject])
+        return {
+          name: `${String(officialTopic.topicNumber).padStart(2, "0")} · ${officialTopic.topic}`,
+          subject: `H2 Physics · ${officialTopic.subtopics.length} subtopics`,
+          mastery,
+          latest:
+            tone === "good" ? "Good" : tone === "medium" ? "Medium" : "Needs work",
+          tone,
+          attempts: [],
+        }
+      })
+  }, [selectedTopicNumbers, student, subject])
 
   const monthlyStreak = student?.monthly_streak?.length ?? 0
   const yearlyStreak = student?.year_streak?.length ?? 0
@@ -223,6 +228,79 @@ export default function DropBox() {
 
     const data = (await response.json()) as { student: Student }
     setStudent(data.student)
+  }
+
+  async function downloadDailyQuestion() {
+    setStatus("Preparing today's question...")
+
+    const assignmentResponse = await fetch(
+      "/api/practice/daily",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          student_id: studentId,
+          teacher_id: teacherId,
+        }),
+      },
+    )
+
+    const assignmentData = await assignmentResponse.json()
+
+    if (!assignmentResponse.ok) {
+      return setStatus(
+        assignmentData.message ||
+          "Could not prepare today's question",
+      )
+    }
+
+    const dailyQuestionIds = assignmentData.question?._id
+      ? [assignmentData.question._id]
+      : assignmentData.assignment.questions
+
+    setAssignmentId(assignmentData.assignment._id)
+    setQuestionIds(dailyQuestionIds)
+    localStorage.setItem(
+      "dailyAssignmentId",
+      assignmentData.assignment._id,
+    )
+    localStorage.setItem(
+      "dailyQuestionIds",
+      JSON.stringify(dailyQuestionIds),
+    )
+
+    const pdfResponse = await fetch(
+      "/api/practice/daily/pdf",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assignment_id: assignmentData.assignment._id,
+        }),
+      },
+    )
+
+    if (!pdfResponse.ok) {
+      return setStatus("Could not download today's question")
+    }
+
+    const url = URL.createObjectURL(
+      await pdfResponse.blob(),
+    )
+    const link = document.createElement("a")
+
+    link.href = url
+    link.download = "daily-physics-question.pdf"
+    link.click()
+
+    URL.revokeObjectURL(url)
+    setDailyQuestionReady(true)
+    setShowPractice(true)
+    setStatus("Today's Physics question downloaded.")
   }
 
   async function downloadDiagnostic() {
@@ -268,18 +346,17 @@ export default function DropBox() {
     setStatus("Diagnostic downloaded. Complete it, then upload the answer PDF.")
   }
 
-  async function uploadSubmission() {
-    if (!file || !assignmentId) {
-      return setStatus(
-        "Download a diagnostic first and select your completed PDF.",
-      )
+  async function uploadSubmission(selectedFile: File | null = file) {
+    if (!selectedFile || !assignmentId) {
+      return setStatus("Download today's question before uploading your PDF.")
     }
 
+    setFile(selectedFile)
     setStatus("Uploading answers...")
     const formData = new FormData()
     formData.append("student_id", studentId)
     formData.append("assignment_id", assignmentId)
-    formData.append("file", file)
+    formData.append("file", selectedFile)
 
     const response = await fetch("/api/submissions", {
       method: "POST",
@@ -290,7 +367,7 @@ export default function DropBox() {
     if (!response.ok) return setStatus(data.message || "Upload failed")
 
     setSubmissionId(data.submission._id)
-    localStorage.setItem("diagnosticSubmissionId", data.submission._id)
+    localStorage.setItem("dailySubmissionId", data.submission._id)
     setStatus("Answers uploaded. You can now mark them.")
   }
 
@@ -331,7 +408,37 @@ export default function DropBox() {
       setResults([...markedResults])
     }
 
-    setStatus("All answers marked successfully.")
+    const completeResponse = await fetch(
+      "/api/assignment/complete",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignment_id: assignmentId,
+          submission_id: submissionId,
+        }),
+      },
+    )
+    const completeData = await completeResponse.json()
+
+    if (!completeResponse.ok) {
+      return setStatus(
+        completeData.message ||
+          "Answers marked, but the assignment could not be finalized.",
+      )
+    }
+
+    const studentResponse = await fetch(
+      `/api/student?student_id=${encodeURIComponent(studentId)}`,
+    )
+    if (studentResponse.ok) {
+      const studentData = (await studentResponse.json()) as {
+        student: Student
+      }
+      setStudent(studentData.student)
+    }
+
+    setStatus("All answers marked and finalized successfully.")
   }
 
   return (
@@ -377,6 +484,7 @@ export default function DropBox() {
           onExamDateChange={updateExamDate}
           monthlyStreak={monthlyStreak}
           yearlyStreak={yearlyStreak}
+          onTrackProgress={() => void downloadDailyQuestion()}
         />
       ) : (
         <ProgressView
@@ -385,22 +493,7 @@ export default function DropBox() {
         />
       )}
 
-      <section className="practice-section">
-        <div>
-          <p className="eyebrow">Daily practice</p>
-          <h2>Keep the momentum going.</h2>
-        </div>
-        <button
-          className="outline-button"
-          type="button"
-          onClick={() => setShowPractice((visible) => !visible)}
-        >
-          {showPractice ? "Close practice" : "Open practice"}
-          <span>↗</span>
-        </button>
-      </section>
-
-      {showPractice && (
+      {showPractice && dailyQuestionReady && (
         <section className="practice-panel">
           <div className="practice-fields">
             <input
@@ -420,26 +513,26 @@ export default function DropBox() {
             />
           </div>
           <div className="practice-actions">
-            <button type="button" onClick={downloadDiagnostic}>
-              Download diagnostic
-            </button>
-            <label className="file-drop">
-              Upload completed PDF
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-            <button type="button" onClick={uploadSubmission}>
-              Upload answers
-            </button>
-            <button type="button" onClick={markAnswers}>
-              Mark answers
-            </button>
+            {!submissionId && (
+              <label className="primary-button upload-button">
+                Upload completed PDF
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(event) =>
+                    void uploadSubmission(event.target.files?.[0] ?? null)
+                  }
+                />
+              </label>
+            )}
+            {submissionId && (
+              <button type="button" onClick={markAnswers}>
+                Mark answers
+              </button>
+            )}
           </div>
           {assignmentId && (
-            <p className="status">Diagnostic ready · {assignmentId}</p>
+            <p className="status">Daily question ready · {assignmentId}</p>
           )}
           {file && <p className="status">Selected · {file.name}</p>}
           {status && <p className="status">{status}</p>}
@@ -471,12 +564,14 @@ function StreaksView({
   onExamDateChange,
   monthlyStreak,
   yearlyStreak,
+  onTrackProgress,
 }: {
   daysToExam: number
   examDate: string
   onExamDateChange: (value: string) => void
   monthlyStreak: number
   yearlyStreak: number
+  onTrackProgress: () => void
 }) {
   const examDateRef = useRef<HTMLInputElement>(null)
   const calendarDate = useMemo(() => new Date(), [])
@@ -569,7 +664,11 @@ function StreaksView({
         <span>Notes</span>
         <p>Keep the rhythm going.</p>
       </div>
-      <button className="primary-button" type="button">
+      <button
+        className="primary-button"
+        type="button"
+        onClick={onTrackProgress}
+      >
         Track my progress <span>↗</span>
       </button>
     </section>
@@ -605,7 +704,7 @@ function ProgressView({
     <section className="content-area progress-area">
       <div className="progress-heading">
         <div>
-          <p className="eyebrow">Learning overview · Term 02</p>
+          <p className="eyebrow">Singapore-Cambridge GCE A-Level · H2 Physics</p>
           <h2>Student progress</h2>
         </div>
         <div className="student-summary">
@@ -621,6 +720,9 @@ function ProgressView({
           <span>Latest</span>
           <span>Attempts</span>
         </div>
+        {rows.length === 0 && (
+          <p className="status">No H2 Physics topics have been selected yet.</p>
+        )}
         {rows.map((row) => (
           <div className="progress-row" key={row.name}>
             <div className="topic-cell">
@@ -657,11 +759,6 @@ function ProgressView({
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="selected-detail">
-        <span>Selected: Quadratic functions</span>
-        <strong>Attempt 2 · 7/10 correct · 5m 31s · Improving</strong>
       </div>
 
       <div className="legend">
