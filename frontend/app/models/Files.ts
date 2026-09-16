@@ -12,6 +12,25 @@ const FileSchema = new Schema(
             required: true,
         },
 
+        paper_id: {
+            type: String,
+            required: true,
+            index: true,
+        },
+
+        file_type: {
+            type: String,
+            enum: ["question", "answer"],
+            required: true,
+            default: "question",
+        },
+
+        paired_file: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "File",
+            default: null,
+        },
+
         questions: [
             {
                 type: mongoose.Schema.Types.ObjectId,

@@ -25,10 +25,10 @@ export async function GET() {
             await Promise.all([
                 Student.find().select("_id student_id name subjects").lean(),
                 Teacher.find().select("_id teacher_id name").lean(),
-                File.find().select("_id filename subject").lean(),
+                File.find().select("_id filename subject paper_id file_type paired_file").lean(),
                 Question.find()
                     .select(
-                        "_id question_number topic subtopic subtopics difficulty total_marks file"
+                        "_id question_number topic subtopic subtopics difficulty total_marks file answer_key_file"
                     )
                     .lean(),
                 Assignment.find()

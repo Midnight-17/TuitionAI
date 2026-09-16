@@ -1,303 +1,234 @@
 import { GoogleGenAI } from "@google/genai";
+import type { Types } from "mongoose";
+import { PDFDocument } from "pdf-lib";
 import { connectDB } from "@/lib/mongodb";
 import FileModel from "@/app/models/Files";
 import Question from "@/app/models/Questions";
 import { uploadPDF } from "@/lib/gridfs";
-import { h2PhysicsTopics } from "@/app/data/h2PhysicsTopics";
-
-const validTopicNames = new Set(
-    h2PhysicsTopics.map((topic) => topic.topic),
-);
+import {
+    getAnalysisPrompt,
+    paperAnalysisSchema,
+    parsePaperAnalysis,
+    PaperAnalysisError,
+    type AnalysedQuestion,
+} from "@/lib/paperAnalysis";
+import {
+    buildPaperPairs,
+    type PaperFilePair,
+    type PaperPairingManifest,
+} from "@/lib/paperFiles";
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY!,
 });
 
-export async function POST(request: Request) {
-    try {
-        await connectDB();
+type CreatedQuestion = { _id: Types.ObjectId };
 
-        // --------------------------------
-        // 1. Get uploaded PDF
-        // --------------------------------
+async function analysePaper(pair: PaperFilePair) {
+    const questionBuffer = Buffer.from(await pair.questionFile.arrayBuffer());
+    const answerBuffer = pair.answerFile
+        ? Buffer.from(await pair.answerFile.arrayBuffer())
+        : null;
+    const pages = {
+        question: (await PDFDocument.load(questionBuffer)).getPageCount(),
+        answer: answerBuffer ? (await PDFDocument.load(answerBuffer)).getPageCount() : null,
+    };
 
-        const formData = await request.formData();
+    const input = [
+        {
+            type: "text" as const,
+            text: getAnalysisPrompt(pages),
+        },
+        {
+            type: "document" as const,
+            data: questionBuffer.toString("base64"),
+            mime_type: "application/pdf",
+        },
+    ];
 
-        const file = formData.get("file") as File | null;
+    if (answerBuffer) {
+        input.push({
+            type: "document" as const,
+            data: answerBuffer.toString("base64"),
+            mime_type: "application/pdf",
+        });
+    }
 
-        if (!file) {
-            return Response.json(
-                { message: "No file uploaded" },
-                { status: 400 }
-            );
-        };
-
-        console.log("File received:", file.name);
-
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        const pdfId = await uploadPDF(
-                buffer,
-                file.name,
-            );
-
-        // --------------------------------
-        // 2. Ask Gemini to analyse paper
-        // --------------------------------
-
+    // One bounded retry for an invalid model response; no uploads or database writes yet.
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
         const interaction = await ai.interactions.create({
             model: "gemini-3.6-flash",
-
-            input: [
-                {
-                    type: "text",
-                    text: `
-You are an experienced Singapore Junior College A-Level Physics teacher.
-
-You are analysing an A-Level Physics examination paper or practice paper.
-
-The paper may contain:
-- Multiple sections
-- Multiple questions
-- Sub-questions such as (a), (b), (c)
-- Questions spanning multiple pages
-- Multiple questions on the same page
-- An answer key / marking scheme attached after the question paper
-
-Your job is to analyse EVERY question in the question paper.
-
-IMPORTANT:
-The most important part of your analysis is the DIFFICULTY rating.
-
-Judge difficulty as an experienced Singapore A-Level Physics teacher would.
-
-Difficulty should NOT simply be based on:
-- Number of equations used
-- Number of marks
-- Length of the question
-
-Instead consider:
-- How difficult the underlying physics concept is
-- Whether the concept is commonly tested or unusual
-- How many reasoning steps are required
-- Whether the student must combine multiple concepts
-- Whether the question requires interpretation rather than direct substitution
-- Whether there are common traps or misconceptions
-- How difficult it would be for a typical Singapore JC A-Level Physics student
-- Whether the question requires significant mathematical manipulation
-- Whether the question contains unfamiliar or non-standard applications of familiar concepts
-
-Use this 1–5 difficulty scale:
-
-1 = Very easy
-2 = Easy
-3 = Moderate
-4 = Difficult
-5 = Very difficult
-
-TOPIC:
-Identify the main Physics topic being tested.
-
-PAGES:
-For each question, identify ALL pages on which the question appears.
-
-ANSWER KEY PAGE:
-Identify the page(s) where the answer or marking scheme for that question appears.
-
-TOTAL MARKS:
-Determine the total marks awarded for the question.
-
-QUESTION NUMBER:
-Use the actual question number from the paper.
-
-SUBTOPICS:
-Identify ALL specific subtopics within the main Physics topic being tested.
-A question may test more than one subtopic.
-Return every relevant subtopic in a "subtopics" array.
-
-For example:
-Topic: Motion and Forces
-Subtopics: ["Kinematics", "Laws of motion"]
-
-Topic: Motion and Forces
-Subtopics: ["Forces and moments"]
-
-Topic: Superposition
-Subtopics: ["Superposition"]
-
-Topic: Electric Fields
-Subtopics: ["Coulomb's law", "Electric field strength"]
-
-IMPORTANT JSON RULES:
-
-Return ONLY valid JSON.
-
-Do NOT use markdown.
-Do NOT use code fences.
-Do NOT include explanations outside the JSON.
-Do NOT include comments.
-
-Return exactly this structure:
-
-[
-    {
-    "question_number": 1,
-    "page": [1],
-    "topic": "Motion and Forces",
-    "subtopics": ["Kinematics", "Uniformly accelerated linear motion"],
-    "answer_key_page": [15],
-    "difficulty": 2,
-    "total_marks": 5
-    }
-]
-
-Every question MUST contain:
-- question_number
-- page
-- topic
-- subtopics
-- answer_key_page
-- difficulty
-- total_marks
-
-"page" MUST always be an array of numbers.
-
-"answer_key_page" MUST always be an array of numbers.
-
-"difficulty" MUST always be an integer from 1 to 5.
-
-"total_marks" MUST always be a number.
-
-Analyse EVERY question in the paper.
-`,
-                },
-                {
-                    type: "document",
-                    data: buffer.toString("base64"),
-                    mime_type: "application/pdf",
-                },
-            ],
+            input,
+            response_format: {
+                type: "text",
+                mime_type: "application/json",
+                schema: paperAnalysisSchema,
+            },
+            generation_config: { max_output_tokens: 20000 },
         });
 
-        // --------------------------------
-        // 3. Get Gemini output
-        // --------------------------------
-
-        const output = interaction.output_text;
-
-        console.log("Gemini output:");
-        console.log(output);
-
-        // --------------------------------
-        // 4. Convert Gemini JSON string
-        //    into an actual JavaScript array
-        // --------------------------------
-
-        let questions;
-
         try {
-            questions = JSON.parse(output!);
+            if (interaction.status !== "completed") {
+                throw new PaperAnalysisError(pair.questionFile.name, [
+                    `The analysis did not finish (status: ${interaction.status})`,
+                ]);
+            }
+            const questions = parsePaperAnalysis(interaction.output_text ?? "", pair.questionFile.name, pages);
+            return { pair, questionBuffer, answerBuffer, questions };
         } catch (error) {
-            console.error("Gemini returned invalid JSON:", output);
+            if (!(error instanceof PaperAnalysisError)) throw error;
+            console.warn("Paper analysis validation failed", {
+                filename: pair.questionFile.name,
+                interactionId: interaction.id,
+                attempt,
+                issues: error.issues,
+            });
+            if (attempt === 2) throw error;
+            input.push({
+                type: "text",
+                text: `The previous analysis failed validation:\n${error.issues.join("\n")}\nReanalyse the documents and return the complete corrected question array, including all valid questions.`,
+            });
+        }
+    }
+    throw new Error("Paper analysis attempts exhausted");
+}
 
-            return Response.json(
-                {
-                    message: "Gemini returned invalid JSON",
-                    result: output,
-                },
-                { status: 500 }
-            );
+async function savePaper({ pair, questionBuffer, answerBuffer, questions }: {
+    pair: PaperFilePair;
+    questionBuffer: Buffer;
+    answerBuffer: Buffer | null;
+    questions: AnalysedQuestion[];
+}) {
+    const questionPdfId = await uploadPDF(questionBuffer, pair.questionFile.name);
+    const answerPdfId = answerBuffer && pair.answerFile
+        ? await uploadPDF(answerBuffer, pair.answerFile.name)
+        : null;
+
+    const questionFile = await FileModel.create({
+        filename: pair.questionFile.name,
+        subject: "Physics",
+        paper_id: pair.paperId,
+        file_type: "question",
+        pdf_id: questionPdfId,
+        questions: [],
+    });
+
+    const answerFile = pair.answerFile && answerPdfId
+        ? await FileModel.create({
+            filename: pair.answerFile.name,
+            subject: "Physics",
+            paper_id: pair.paperId,
+            file_type: "answer",
+            pdf_id: answerPdfId,
+            questions: [],
+        })
+        : null;
+
+    if (answerFile) {
+        questionFile.paired_file = answerFile._id;
+        answerFile.paired_file = questionFile._id;
+        await Promise.all([questionFile.save(), answerFile.save()]);
+    }
+
+    const questionDocuments = await Question.create(
+        questions.map((question) => ({
+            question_number: question.question_number,
+            page: question.page,
+            topic: question.topic,
+            subtopics: [...new Set(question.subtopics)],
+            answer_key_page: question.answer_key_page,
+            difficulty: question.difficulty,
+            total_marks: question.total_marks,
+            file: questionFile._id,
+            answer_key_file: answerFile?._id ?? null,
+        })),
+    ) as CreatedQuestion[];
+
+    questionFile.questions = questionDocuments.map((question) => question._id);
+    await questionFile.save();
+
+    return {
+        paper_id: pair.paperId,
+        question_file: questionFile,
+        answer_file: answerFile,
+        questions: questionDocuments,
+    };
+}
+
+export async function POST(request: Request) {
+    try {
+        const formData = await request.formData();
+        const uploadedFiles = formData
+            .getAll("files")
+            .filter((value): value is File => value instanceof File);
+        const legacyFile = formData.get("file");
+        const files = uploadedFiles.length > 0
+            ? uploadedFiles
+            : legacyFile instanceof File
+                ? [legacyFile]
+                : [];
+
+        if (files.length === 0) {
+            return Response.json({ message: "No PDF files uploaded" }, { status: 400 });
         }
 
-        if (
-            !Array.isArray(questions) ||
-            questions.some(
-                (question) =>
-                    typeof question.topic !== "string" ||
-                    !validTopicNames.has(question.topic) ||
-                    !Array.isArray(question.subtopics) ||
-                    question.subtopics.length === 0 ||
-                    question.subtopics.some(
-                        (subtopic: unknown) =>
-                            typeof subtopic !== "string" ||
-                            subtopic.trim() === "",
-                    ),
-            )
-        ) {
+        const rawManifest = formData.get("pairing_manifest");
+        if (typeof rawManifest !== "string") {
             return Response.json(
-                {
-                    message:
-                        "Each question must have a valid H2 Physics topic and at least one subtopic",
-                },
+                { message: "Confirm the AI filename matches before analysing" },
                 { status: 400 },
             );
         }
 
-        // --------------------------------
-        // 6. Create the File document
-        // --------------------------------
-
-        const newFile = await FileModel.create({
-            filename: file.name,
-            subject: "Physics",
-            pdf_id: pdfId,
-            questions: [],
-        });
-
-        // --------------------------------
-        // 7. Create Question documents
-        // --------------------------------
-
-        const questionDocuments = [];
-
-        for (const question of questions) {
-            const newQuestion = await Question.create({
-                question_number: question.question_number,
-                page: question.page,
-                topic: question.topic,
-                subtopics: [...new Set(question.subtopics)],
-                answer_key_page: question.answer_key_page,
-                difficulty: question.difficulty,
-                total_marks: question.total_marks,
-
-                // Link question → file
-                file: newFile._id,
-            });
-
-            questionDocuments.push(newQuestion._id);
+        let manifest: PaperPairingManifest;
+        try {
+            manifest = JSON.parse(rawManifest) as PaperPairingManifest;
+        } catch {
+            return Response.json({ message: "Invalid file-pairing manifest" }, { status: 400 });
         }
 
-        // --------------------------------
-        // 8. Link all questions back to File
-        // --------------------------------
+        if (!manifest || !Array.isArray(manifest.groups) || !Array.isArray(manifest.unmatched)) {
+            return Response.json({ message: "Invalid file-pairing manifest" }, { status: 400 });
+        }
 
-        newFile.questions = questionDocuments;
+        const { pairs, unmatched } = buildPaperPairs(files, manifest);
+        if (pairs.length === 0) {
+            return Response.json(
+                { message: "No validated question-paper pairs were provided", unmatched },
+                { status: 400 },
+            );
+        }
 
-        await newFile.save();
+        // Validate the entire batch before persisting. A later analysis failure must
+        // not leave earlier papers saved and duplicate them when the batch is retried.
+        const analyses = [];
+        for (const pair of pairs) {
+            analyses.push(await analysePaper(pair));
+        }
 
-        // --------------------------------
-        // 9. Return result
-        // --------------------------------
+        await connectDB();
+        const results = [];
+        for (const analysis of analyses) {
+            results.push(await savePaper(analysis));
+        }
 
         return Response.json({
-            message: "PDF analysed and saved successfully",
-
-            file: newFile,
-
-            questions: questionDocuments,
-
-            result: questions,
+            message: `${results.length} paper${results.length === 1 ? "" : "s"} analysed and saved successfully`,
+            results,
+            unmatched,
         });
-
     } catch (error) {
-        console.error("Error analysing PDF:", error);
-
+        if (error instanceof PaperAnalysisError) {
+            return Response.json({
+                message: `${error.message}. No papers from this batch were saved. Please retry analysis.`,
+                filename: error.filename,
+                issues: error.issues,
+            }, { status: 502 });
+        }
+        console.error("Error analysing uploaded papers:", error);
         return Response.json(
-            {
-                message: "Failed to analyse PDF",
-                error: String(error),
-            },
-            { status: 500 }
+            { message: "Failed to analyse uploaded papers", error: String(error) },
+            { status: 500 },
         );
     }
 }

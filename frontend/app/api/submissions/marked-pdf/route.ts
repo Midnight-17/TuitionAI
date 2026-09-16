@@ -26,11 +26,19 @@ export async function POST(request: Request) {
         const questions = (assignment.questions as QuestionId[])
             .map((questionId) => questionsById.get(questionId.toString()))
             .filter((question) => Boolean(question));
-        const files = await FileModel.find({ _id: { $in: questions.map((question) => question.file) } });
+        const files = await FileModel.find({
+            _id: {
+                $in: questions.flatMap((question) => [
+                    question.file,
+                    question.answer_key_file,
+                ]).filter(Boolean),
+            },
+        });
         const filesById = new Map(files.map((file) => [file._id.toString(), file]));
         const answerKeyPDF = await createQuestionPDF(questions.map((question) => {
-            const file = filesById.get(question.file.toString());
-            if (!file) throw new Error("Question file not found");
+            const answerKeyFileId = question.answer_key_file ?? question.file;
+            const file = filesById.get(answerKeyFileId.toString());
+            if (!file) throw new Error("Answer key file not found");
             return { pdf_id: file.pdf_id, page: question.answer_key_page };
         }));
         const studentPDF = await downloadPDF(submission.submitted_pdf_id);

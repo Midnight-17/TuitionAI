@@ -50,6 +50,12 @@ const QuestionsSchema = new Schema(
             ref: "File",
             required: true,
         },
+
+        answer_key_file: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "File",
+            default: null,
+        },
     },
     {
         timestamps: true,

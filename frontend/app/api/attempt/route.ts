@@ -181,11 +181,11 @@ export async function POST(request: Request) {
         // 7. Find the File
         // --------------------------------
 
-        const file = await FileModel.findById(
+        const questionFile = await FileModel.findById(
             question.file
         );
 
-        if (!file) {
+        if (!questionFile) {
             return NextResponse.json(
                 {
                     message: "File for question not found",
@@ -198,16 +198,31 @@ export async function POST(request: Request) {
         // 8. Download original PDF
         // --------------------------------
 
-        const pdfBuffer = await downloadPDF(
-            file.pdf_id
+        const questionPdfBuffer = await downloadPDF(
+            questionFile.pdf_id
         );
+
+        const answerKeyFile = question.answer_key_file
+            ? await FileModel.findById(question.answer_key_file)
+            : questionFile;
+
+        if (!answerKeyFile) {
+            return NextResponse.json(
+                {
+                    message: "Answer key file for question not found",
+                },
+                { status: 404 }
+            );
+        }
+
+        const answerKeyPdfBuffer = await downloadPDF(answerKeyFile.pdf_id);
 
         // --------------------------------
         // 9. Extract question pages
         // --------------------------------
 
         const questionPDF = await extractPDFPages(
-            pdfBuffer,
+            questionPdfBuffer,
             question.page
         );
 
@@ -216,7 +231,7 @@ export async function POST(request: Request) {
         // --------------------------------
 
         const answerKeyPDF = await extractPDFPages(
-            pdfBuffer,
+            answerKeyPdfBuffer,
             question.answer_key_page
         );
 

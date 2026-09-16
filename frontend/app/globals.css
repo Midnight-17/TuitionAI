@@ -609,6 +609,208 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.teacher-upload-panel {
+  padding: 42px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.teacher-upload-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 24px;
+}
+
+.teacher-upload-heading h2 {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 52px);
+  font-weight: 300;
+  letter-spacing: -0.06em;
+}
+
+.teacher-upload-heading > p {
+  max-width: 420px;
+  margin: 0 0 4px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.teacher-upload-dropzone {
+  display: flex;
+  min-height: 170px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed #36404b;
+  background: #080a0c;
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.teacher-upload-dropzone:hover,
+.teacher-upload-dropzone:focus-within {
+  border-color: var(--blue);
+  background: #0a1013;
+}
+
+.teacher-upload-dropzone strong {
+  color: var(--white);
+  font-size: 17px;
+}
+
+.teacher-upload-dropzone span:not(.teacher-upload-icon) {
+  max-width: 520px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.teacher-upload-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--blue);
+  border-radius: 50%;
+  color: var(--blue);
+  font-size: 22px;
+}
+
+.teacher-upload-dropzone input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.teacher-upload-review {
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid var(--line);
+}
+
+.teacher-upload-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.teacher-upload-summary span,
+.paper-pair span,
+.upload-warning span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.paper-pair-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 10px;
+}
+
+.paper-pair span,
+.upload-warning,
+.selected-paper-files {
+  overflow-wrap: anywhere;
+}
+
+.selected-paper-files {
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.selected-paper-files summary {
+  min-height: 44px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.selected-paper-files ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.selected-paper-files li + li {
+  margin-top: 6px;
+}
+
+.paper-pair {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px;
+  background: #0b0e11;
+}
+
+.paper-pair strong {
+  overflow: hidden;
+  color: var(--white);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pair-answer {
+  color: var(--green) !important;
+}
+
+.pair-warning {
+  color: var(--amber) !important;
+}
+
+.pair-confidence {
+  margin-top: 4px;
+  color: #66717c !important;
+  line-height: 1.4;
+}
+
+.upload-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 13px 14px;
+  border-left: 2px solid var(--amber);
+  background: #17130b;
+}
+
+.upload-warning strong {
+  color: var(--amber);
+  font-size: 13px;
+}
+
+.teacher-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.teacher-upload-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.secondary-button {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 13px 16px;
+}
+
+.secondary-button:hover {
+  color: var(--white);
+  border-color: #36404b;
+}
+
 .practice-fields,
 .practice-actions {
   display: flex;
@@ -746,7 +948,8 @@ button {
   }
 
   .progress-heading,
-  .practice-section {
+  .practice-section,
+  .teacher-upload-heading {
     display: block;
   }
 
@@ -781,9 +984,18 @@ button {
 
   .practice-actions button,
   .file-drop,
-  .upload-button {
+  .upload-button,
+  .teacher-upload-actions button {
     width: 100%;
     text-align: center;
+  }
+
+  .teacher-upload-heading > p {
+    margin-top: 18px;
+  }
+
+  .teacher-upload-review {
+    padding: 16px;
   }
 
   .calendar-meta,
@@ -806,6 +1018,12 @@ button {
     width: 28px;
     height: 28px;
     border-width: 3px;
+  }
+
+  .teacher-upload-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
   }
 
   .dashboard-intro {
