@@ -5,6 +5,7 @@ import Teacher from "@/app/models/Teacher"
 import Question from "@/app/models/Questions"
 import Assignment from "@/app/models/Assignment"
 import { h2PhysicsTopics } from "@/app/data/h2PhysicsTopics"
+import { getStudyDay } from "@/lib/studyDate"
 
 type TeachingScope = {
   subject: string
@@ -34,17 +35,6 @@ function getTargetDifficulty(mastery: number) {
   if (mastery < 65) return 3
   if (mastery < 80) return 4
   return 5
-}
-
-function getDayOfYear(date: Date) {
-  const startOfYear = Date.UTC(date.getFullYear(), 0, 1)
-  const startOfDay = Date.UTC(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  )
-
-  return Math.floor((startOfDay - startOfYear) / 86400000) + 1
 }
 
 export async function POST(request: Request) {
@@ -91,17 +81,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const today = new Date()
-    const practiceDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-    )
-    const tomorrow = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate() + 1,
-    )
+    const { start: practiceDate, end: tomorrow, dayOfYear } = getStudyDay()
 
     const existingAssignment = await Assignment.findOne({
       student: student._id,
@@ -193,7 +173,6 @@ export async function POST(request: Request) {
       })
       .filter((topic) => topic.subtopics.length > 0)
 
-    const dayOfYear = getDayOfYear(new Date())
     const isTargetedDay = (dayOfYear - 1) % 3 !== 2
 
     const topicPool = isTargetedDay

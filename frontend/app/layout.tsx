@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Runway | Student dashboard",
+  title: "TuitionAI | Student dashboard",
   description: "A focused workspace for building a consistent study rhythm.",
 };
 

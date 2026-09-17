@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Student from "@/app/models/Student";
+import { getStudyDay } from "@/lib/studyDate";
 
 export async function GET(request: Request) {
     try {
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
 
         const student = await Student.findOne({ student_id: studentId })
             .select(
-                "_id student_id name exam_date year_streak monthly_streak subjects teachers",
+                "_id student_id name exam_date year_streak monthly_streak streak_year streak_month subjects teachers",
             )
             .lean();
 
@@ -137,12 +138,7 @@ export async function PATCH(request: Request) {
             Date.UTC(Number(year), Number(month) - 1, Number(day)),
         );
         const normalizedDate = parsedExamDate.toISOString().slice(0, 10);
-        const today = new Date();
-        const todayIso = new Date(
-            Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()),
-        )
-            .toISOString()
-            .slice(0, 10);
+        const todayIso = getStudyDay().date;
 
         if (normalizedDate !== exam_date) {
             return NextResponse.json(
@@ -164,7 +160,7 @@ export async function PATCH(request: Request) {
             { new: true, runValidators: true },
         )
             .select(
-                "_id student_id name exam_date year_streak monthly_streak subjects teachers",
+                "_id student_id name exam_date year_streak monthly_streak streak_year streak_month subjects teachers",
             )
             .lean();
 

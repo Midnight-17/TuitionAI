@@ -3,12 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react"
 import type { ReactNode } from "react"
 import { h2PhysicsTopics } from "@/app/data/h2PhysicsTopics"
-import {
-  buildPaperPairs,
-  type PaperFilePair,
-  type PaperPairingManifest,
-  type UnmatchedPaperFile,
-} from "@/lib/paperFiles"
+import { getStudyDay } from "@/lib/studyDate"
 
 type Subtopic = { name: string; mastery: number }
 type Topic = { name: string; mastery?: number; subtopics?: Subtopic[] }
@@ -25,6 +20,14 @@ type Student = {
   subjects?: Subject[]
   year_streak?: number[]
   monthly_streak?: number[]
+  streak_year?: number
+  streak_month?: number
+}
+
+type DropBoxProps = {
+  studentId?: string
+  teacherId?: string
+  readOnly?: boolean
 }
 
 
@@ -37,14 +40,9 @@ type ProgressRow = {
   attempts: string[]
 }
 
-// Use the user's local date so the picker does not shift by a day across timezones.
+// Daily practice and streaks share the same Singapore calendar date.
 function getTodayIso() {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, "0")
-  const day = String(today.getDate()).padStart(2, "0")
-
-  return `${year}-${month}-${day}`
+  return getStudyDay().date
 }
 
 type CalendarDay = {
@@ -56,7 +54,7 @@ type CalendarDay = {
 function getCalendarDays(date: Date): CalendarDay[] {
   const year = date.getFullYear()
   const month = date.getMonth()
-  const today = new Date()
+  const today = new Date(`${getTodayIso()}T12:00:00`)
   const firstDayOffset = (new Date(year, month, 1).getDay() + 6) % 7
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const daysInPreviousMonth = new Date(year, month, 0).getDate()
@@ -92,13 +90,34 @@ function getCalendarDays(date: Date): CalendarDay[] {
   })
 }
 
-export default function DropBox() {
+export default function DropBox({
+  studentId = "S001",
+  teacherId = "T001",
+  readOnly = false,
+}: DropBoxProps = {}) {
+  // Reset dashboard state immediately when the selected student changes.
+  return (
+    <StudentDashboard
+      key={`${studentId}:${teacherId}:${readOnly}`}
+      studentId={studentId}
+      teacherId={teacherId}
+      readOnly={readOnly}
+    />
+  )
+}
+
+function StudentDashboard({
+  studentId,
+  teacherId,
+  readOnly,
+}: Required<DropBoxProps>) {
   const [tab, setTab] = useState<"streaks" | "progress">("streaks")
   const [student, setStudent] = useState<Student | null>(null)
   const [selectedTopicNumbers, setSelectedTopicNumbers] = useState<number[]>([])
-  const [studentId, setStudentId] = useState("S001")
-  const [teacherId, setTeacherId] = useState("T001")
-  const [subject, setSubject] = useState("Physics")
+  const subject = "Physics"
+  const [studentLoading, setStudentLoading] = useState(true)
+  const [studentError, setStudentError] = useState("")
+  const [reloadCount, setReloadCount] = useState(0)
   const [examDate, setExamDate] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [assignmentId, setAssignmentId] = useState<string | null>(null)
@@ -111,36 +130,16 @@ export default function DropBox() {
   const [status, setStatus] = useState("")
   const [showPractice, setShowPractice] = useState(false)
   const [dailyQuestionReady, setDailyQuestionReady] = useState(false)
-  const [teacherFiles, setTeacherFiles] = useState<File[]>([])
-  const [teacherPairingManifest, setTeacherPairingManifest] =
-    useState<PaperPairingManifest | null>(null)
-  const [teacherFilePreview, setTeacherFilePreview] = useState<{
-    pairs: PaperFilePair[]
-    unmatched: UnmatchedPaperFile[]
-  }>({ pairs: [], unmatched: [] })
-  const [teacherPairing, setTeacherPairing] = useState(false)
-  const [teacherPairingFailed, setTeacherPairingFailed] = useState(false)
-  const [pairingElapsedSeconds, setPairingElapsedSeconds] = useState(0)
-  const [teacherUploadStatus, setTeacherUploadStatus] = useState("")
-  const [teacherUploading, setTeacherUploading] = useState(false)
-  const pairingRequestRef = useRef(0)
-  const pairingControllerRef = useRef<AbortController | null>(null)
-  const pairingStartedAtRef = useRef(0)
+  const [todayIso, setTodayIso] = useState(getTodayIso)
 
-  useEffect(() => () => {
-    pairingRequestRef.current += 1
-    pairingControllerRef.current?.abort()
+  useEffect(() => {
+    const timer = window.setInterval(() => setTodayIso(getTodayIso()), 60000)
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
-    if (!teacherPairing) return
-    const timer = window.setInterval(() => {
-      setPairingElapsedSeconds(Math.floor((Date.now() - pairingStartedAtRef.current) / 1000))
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [teacherPairing])
+    if (readOnly) return
 
-  useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       const savedAssignmentId =
         localStorage.getItem("dailyAssignmentId") ||
@@ -167,181 +166,110 @@ export default function DropBox() {
     })
 
     return () => window.cancelAnimationFrame(frameId)
-  }, [])
-
-  async function prepareTeacherFiles(selectedFiles: File[]) {
-    if (teacherUploading) return
-    const pdfFiles = selectedFiles.filter(
-      (selectedFile) =>
-        selectedFile.type === "application/pdf" ||
-        selectedFile.name.toLowerCase().endsWith(".pdf"),
-    )
-    const requestId = pairingRequestRef.current + 1
-    pairingRequestRef.current = requestId
-    pairingControllerRef.current?.abort()
-    pairingControllerRef.current = null
-
-    setTeacherFiles(pdfFiles)
-    setTeacherPairingManifest(null)
-    setTeacherFilePreview({ pairs: [], unmatched: [] })
-    setTeacherPairingFailed(false)
-    setPairingElapsedSeconds(0)
-
-    if (pdfFiles.length === 0) {
-      setTeacherPairing(false)
-      setTeacherUploadStatus("Select at least one PDF file.")
-      return
-    }
-
-    setTeacherPairing(true)
-    pairingStartedAtRef.current = Date.now()
-    setTeacherUploadStatus("Matching filenames only. Your PDFs have not been uploaded yet.")
-    const controller = new AbortController()
-    pairingControllerRef.current = controller
-    const timeoutId = window.setTimeout(() => controller.abort(), 15000)
-
-    try {
-      const response = await fetch("/api/analyse/pairing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          files: pdfFiles.map((selectedFile, id) => ({
-            id,
-            name: selectedFile.name,
-            relativePath:
-              (selectedFile as File & { webkitRelativePath?: string })
-                .webkitRelativePath || selectedFile.name,
-            size: selectedFile.size,
-          })),
-        }),
-      })
-      const data = (await response.json()) as {
-        message?: string
-        manifest?: PaperPairingManifest
-      }
-
-      if (requestId !== pairingRequestRef.current) return
-
-      if (data.manifest) {
-        setTeacherPairingManifest(data.manifest)
-        setTeacherFilePreview(buildPaperPairs(pdfFiles, data.manifest))
-      }
-
-      if (!response.ok || !data.manifest) {
-        setTeacherPairingFailed(true)
-        setTeacherUploadStatus(
-          data.message ?? "AI could not recognize the selected filenames.",
-        )
-        return
-      }
-
-      setTeacherUploadStatus(
-        `${data.message ?? "Files recognized."} Review the matches before analysing.`,
-      )
-    } catch {
-      if (requestId === pairingRequestRef.current) {
-        setTeacherPairingFailed(true)
-        setTeacherUploadStatus(
-          controller.signal.aborted
-            ? "Filename matching timed out after 15 seconds. Your PDFs have not been uploaded. Retry matching."
-            : "Could not reach the filename-matching service. Your files are still selected. Retry matching.",
-        )
-      }
-    } finally {
-      window.clearTimeout(timeoutId)
-      if (requestId === pairingRequestRef.current) {
-        pairingControllerRef.current = null
-        setTeacherPairing(false)
-      }
-    }
-  }
-
-  function clearTeacherFiles() {
-    pairingRequestRef.current += 1
-    pairingControllerRef.current?.abort()
-    pairingControllerRef.current = null
-    setTeacherFiles([])
-    setTeacherPairingManifest(null)
-    setTeacherFilePreview({ pairs: [], unmatched: [] })
-    setTeacherPairing(false)
-    setTeacherPairingFailed(false)
-    setPairingElapsedSeconds(0)
-    setTeacherUploadStatus("")
-  }
+  }, [readOnly])
 
   useEffect(() => {
-    if (!assignmentId) return
+    if (readOnly || !assignmentId) return
+
+    const controller = new AbortController()
 
     const loadAssignmentProgress = async () => {
-      const response = await fetch(
-        `/api/assignment?assignment_id=${encodeURIComponent(assignmentId)}`,
-      )
-      if (!response.ok) return
-
-      const data = (await response.json()) as {
-        assignment: { status: string; questions: string[] }
-        attempts: Array<{
-          question: string
-          marks_awarded: number
-          ai_feedback: string | null
-        }>
-      }
-
-      setAssignmentComplete(data.assignment.status === "completed")
-      setQuestionIds((currentQuestionIds) =>
-        currentQuestionIds.length > 0
-          ? currentQuestionIds
-          : data.assignment.questions,
-      )
-
-      if (data.attempts.length > 0) {
-        setResults(
-          data.attempts.map((attempt) => ({
-            question:
-              data.assignment.questions.indexOf(attempt.question) + 1,
-            marks: String(attempt.marks_awarded),
-            feedback: attempt.ai_feedback ?? "No feedback was provided.",
-          })),
+      try {
+        const response = await fetch(
+          `/api/assignment?assignment_id=${encodeURIComponent(assignmentId)}`,
+          { signal: controller.signal },
         )
+        if (!response.ok) return
+
+        const data = (await response.json()) as {
+          assignment: { status: string; questions: string[] }
+          attempts: Array<{
+            question: string
+            marks_awarded: number
+            ai_feedback: string | null
+          }>
+        }
+        if (controller.signal.aborted) return
+
+        setAssignmentComplete(data.assignment.status === "completed")
+        setQuestionIds((currentQuestionIds) =>
+          currentQuestionIds.length > 0
+            ? currentQuestionIds
+            : data.assignment.questions,
+        )
+
+        if (data.attempts.length > 0) {
+          setResults(
+            data.attempts.map((attempt) => ({
+              question:
+                data.assignment.questions.indexOf(attempt.question) + 1,
+              marks: String(attempt.marks_awarded),
+              feedback: attempt.ai_feedback ?? "No feedback was provided.",
+            })),
+          )
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setStatus("Could not load your saved assignment. Refresh to try again.")
+        }
       }
     }
 
     void loadAssignmentProgress()
-  }, [assignmentId])
+    return () => controller.abort()
+  }, [assignmentId, readOnly])
 
   useEffect(() => {
+    const controller = new AbortController()
+
     const loadStudent = async () => {
-      setExamDate("")
+      try {
+        const [response, teacherResponse] = await Promise.all([
+          fetch(`/api/student?student_id=${encodeURIComponent(studentId)}`, {
+            signal: controller.signal,
+          }),
+          fetch(`/api/teacher?teacher_id=${encodeURIComponent(teacherId)}`, {
+            signal: controller.signal,
+          }),
+        ])
+        const data = (await response.json()) as {
+          student?: Student
+          message?: string
+        }
+        if (!response.ok || !data.student) {
+          throw new Error(data.message ?? "Could not load this student's progress.")
+        }
+        if (!teacherResponse.ok) {
+          throw new Error("Could not load the teacher's selected topics.")
+        }
 
-      const response = await fetch(
-        `/api/student?student_id=${encodeURIComponent(studentId)}`,
-      )
-      if (!response.ok) return
+        const teacherData = (await teacherResponse.json()) as {
+          teacher: Teacher
+        }
+        if (controller.signal.aborted) return
 
-      const data = (await response.json()) as { student: Student }
-      setStudent(data.student)
-      setExamDate(data.student.exam_date?.slice(0, 10) ?? "")
-
-      const teacherResponse = await fetch(
-        `/api/teacher?teacher_id=${encodeURIComponent(teacherId)}`,
-      )
-      if (!teacherResponse.ok) {
-        setSelectedTopicNumbers([])
-        return
+        const physicsScope = teacherData.teacher.teaching_scopes?.find(
+          (scope) => scope.subject === "Physics" && scope.level === "H2",
+        )
+        setStudent(data.student)
+        setExamDate(data.student.exam_date?.slice(0, 10) ?? "")
+        setSelectedTopicNumbers(physicsScope?.selected_topics ?? [])
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setStudentError(
+            error instanceof Error
+              ? error.message
+              : "Could not load this student's progress.",
+          )
+        }
+      } finally {
+        if (!controller.signal.aborted) setStudentLoading(false)
       }
-
-      const teacherData = (await teacherResponse.json()) as {
-        teacher: Teacher
-      }
-      const physicsScope = teacherData.teacher.teaching_scopes?.find(
-        (scope) => scope.subject === "Physics" && scope.level === "H2",
-      )
-      setSelectedTopicNumbers(physicsScope?.selected_topics ?? [])
     }
 
     void loadStudent()
-  }, [studentId, teacherId])
+    return () => controller.abort()
+  }, [studentId, teacherId, reloadCount])
 
   const progressRows = useMemo<ProgressRow[]>(() => {
     const studentTopics =
@@ -375,21 +303,30 @@ export default function DropBox() {
       })
   }, [selectedTopicNumbers, student, subject])
 
-  const monthlyStreak = student?.monthly_streak?.length ?? 0
-  const yearlyStreak = student?.year_streak?.length ?? 0
+  const currentDate = getStudyDay(new Date(`${todayIso}T12:00:00+08:00`))
+  const isCurrentStreakYear = student?.streak_year === currentDate.year
+  const completedDays = isCurrentStreakYear &&
+    student?.streak_month === currentDate.month
+    ? [...new Set(student.monthly_streak ?? [])]
+    : []
+  const monthlyStreak = completedDays.length
+  const yearlyStreak = isCurrentStreakYear
+    ? new Set(student?.year_streak ?? []).size
+    : 0
 
   const daysToExam = useMemo(() => {
     if (!examDate) return 0
 
-    const today = new Date()
-    const exam = new Date(`${examDate}T00:00:00`)
+    const today = new Date(`${todayIso}T00:00:00Z`)
+    const exam = new Date(`${examDate}T00:00:00Z`)
     return Math.max(
       0,
       Math.ceil((exam.getTime() - today.getTime()) / 86400000),
     )
-  }, [examDate])
+  }, [examDate, todayIso])
 
   async function updateExamDate(value: string) {
+    if (readOnly) return
     setExamDate(value)
 
     const response = await fetch("/api/student", {
@@ -413,6 +350,7 @@ export default function DropBox() {
   }
 
   async function downloadDailyQuestion() {
+    if (readOnly) return
     setStatus("Preparing today's question...")
 
     const assignmentResponse = await fetch(
@@ -487,50 +425,8 @@ export default function DropBox() {
     setStatus("Today's Physics question downloaded.")
   }
 
-  async function downloadDiagnostic() {
-    setStatus("Creating diagnostic...")
-
-    const response = await fetch("/api/diagnostics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        student_id: studentId,
-        teacher_id: teacherId,
-        subject,
-      }),
-    })
-    const data = await response.json()
-
-    if (!response.ok) {
-      return setStatus(data.message || "Could not create diagnostic")
-    }
-
-    setAssignmentId(data.assignment._id)
-    setQuestionIds(data.assignment.questions)
-    localStorage.setItem("diagnosticAssignmentId", data.assignment._id)
-    localStorage.setItem(
-      "diagnosticQuestionIds",
-      JSON.stringify(data.assignment.questions),
-    )
-
-    const pdfResponse = await fetch("/api/diagnostics/pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignment_id: data.assignment._id }),
-    })
-
-    if (!pdfResponse.ok) return setStatus("Could not download diagnostic")
-
-    const url = URL.createObjectURL(await pdfResponse.blob())
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `diagnostic-${data.assignment._id}.pdf`
-    link.click()
-    URL.revokeObjectURL(url)
-    setStatus("Diagnostic downloaded. Complete it, then upload the answer PDF.")
-  }
-
   async function uploadSubmission(selectedFile: File | null = file) {
+    if (readOnly) return
     if (!selectedFile || !assignmentId) {
       return setStatus("Download today's question before uploading your PDF.")
     }
@@ -556,6 +452,7 @@ export default function DropBox() {
   }
 
   async function markAnswers() {
+    if (readOnly) return
     if (!submissionId || !assignmentId) {
       return setStatus("Upload your completed answer PDF first.")
     }
@@ -627,6 +524,7 @@ export default function DropBox() {
   }
 
   async function downloadMarkedSubmission() {
+    if (readOnly) return
     if (!submissionId) {
       setStatus("Submit your answers before downloading the marked PDF.")
       return
@@ -654,48 +552,6 @@ export default function DropBox() {
     setStatus("Marked PDF downloaded.")
   }
 
-  async function analyseTeacherFiles() {
-    if (!teacherPairingManifest || teacherFilePreview.pairs.length === 0) {
-      setTeacherUploadStatus("Wait for AI filename matching before analysing.")
-      return
-    }
-
-    setTeacherUploading(true)
-    setTeacherUploadStatus("Uploading and analysing papers. This may take a while...")
-
-    const formData = new FormData()
-    teacherFiles.forEach((selectedFile) => formData.append("files", selectedFile))
-    formData.append("pairing_manifest", JSON.stringify(teacherPairingManifest))
-
-    try {
-      const response = await fetch("/api/analyse", {
-        method: "POST",
-        body: formData,
-      })
-      const data = (await response.json()) as {
-        message?: string
-        unmatched?: UnmatchedPaperFile[]
-      }
-
-      if (!response.ok) {
-        setTeacherUploadStatus(data.message ?? "Paper analysis failed.")
-        return
-      }
-
-      const warning = data.unmatched?.length
-        ? ` ${data.unmatched.length} file${data.unmatched.length === 1 ? " was" : "s were"} not processed.`
-        : ""
-      setTeacherUploadStatus(`${data.message ?? "Papers analysed successfully."}${warning}`)
-      setTeacherFiles([])
-      setTeacherPairingManifest(null)
-      setTeacherFilePreview({ pairs: [], unmatched: [] })
-    } catch {
-      setTeacherUploadStatus("Could not reach the analysis service. Try again.")
-    } finally {
-      setTeacherUploading(false)
-    }
-  }
-
   return (
     <main className="dashboard-shell">
       <header className="topbar">
@@ -703,19 +559,27 @@ export default function DropBox() {
           <span className="brand-mark" />
           TuitionAI
         </div>
-        <button className="logout-button" type="button">
-          Logout
-        </button>
+        {readOnly ? (
+          <span className="eyebrow">Teacher view</span>
+        ) : (
+          <button className="logout-button" type="button">
+            Logout
+          </button>
+        )}
       </header>
 
       <section className="dashboard-intro">
-        <p className="eyebrow">Student dashboard · Term 02</p>
+        <p className="eyebrow">
+          Student dashboard{student ? ` · ${student.name}` : ""}
+        </p>
         <h1>
-          Build your rhythm<span>.</span>
+          {readOnly ? (student?.name ?? "Student progress") : "Build your rhythm"}<span>.</span>
         </h1>
         <div className="tabs" role="tablist" aria-label="Dashboard views">
           <button
             className={tab === "streaks" ? "tab active" : "tab"}
+            role="tab"
+            aria-selected={tab === "streaks"}
             onClick={() => setTab("streaks")}
             type="button"
           >
@@ -723,6 +587,8 @@ export default function DropBox() {
           </button>
           <button
             className={tab === "progress" ? "tab active" : "tab"}
+            role="tab"
+            aria-selected={tab === "progress"}
             onClick={() => setTab("progress")}
             type="button"
           >
@@ -732,14 +598,39 @@ export default function DropBox() {
         </div>
       </section>
 
-      {tab === "streaks" ? (
+      {studentLoading ? (
+        <section className="content-area" aria-busy="true" aria-live="polite">
+          <p className="status">Loading student progress...</p>
+        </section>
+      ) : studentError ? (
+        <section className="content-area">
+          <p className="status" role="alert">{studentError}</p>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => {
+              setStudentLoading(true)
+              setStudentError("")
+              setReloadCount((count) => count + 1)
+            }}
+          >
+            Try again
+          </button>
+        </section>
+      ) : tab === "streaks" ? (
         <StreaksView
           daysToExam={daysToExam}
           examDate={examDate}
           onExamDateChange={updateExamDate}
           monthlyStreak={monthlyStreak}
           yearlyStreak={yearlyStreak}
-          onTrackProgress={() => void downloadDailyQuestion()}
+          completedDays={completedDays}
+          todayIso={todayIso}
+          readOnly={readOnly}
+          onTrackProgress={() => {
+            if (readOnly) setTab("progress")
+            else void downloadDailyQuestion()
+          }}
         />
       ) : (
         <ProgressView
@@ -748,25 +639,12 @@ export default function DropBox() {
         />
       )}
 
-      {showPractice && dailyQuestionReady && (
+      {!readOnly && status && !(showPractice && dailyQuestionReady) && (
+        <p className="status" role="status">{status}</p>
+      )}
+
+      {!readOnly && !studentLoading && !studentError && showPractice && dailyQuestionReady && (
         <section className="practice-panel">
-          <div className="practice-fields">
-            <input
-              value={studentId}
-              onChange={(event) => setStudentId(event.target.value)}
-              placeholder="Student ID"
-            />
-            <input
-              value={teacherId}
-              onChange={(event) => setTeacherId(event.target.value)}
-              placeholder="Teacher ID"
-            />
-            <input
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-              placeholder="Subject"
-            />
-          </div>
           <div className="practice-actions">
             {!submissionId && (
               <label className="primary-button upload-button">
@@ -811,151 +689,6 @@ export default function DropBox() {
         </section>
       )}
 
-      <section className="teacher-upload-panel" aria-labelledby="teacher-upload-title">
-        <div className="teacher-upload-heading">
-          <div>
-            <p className="eyebrow">Teacher tools · JC H2 Physics</p>
-            <h2 id="teacher-upload-title">Add question papers</h2>
-          </div>
-          <p>Upload one paper, several PDFs, or a complete folder. AI recognizes the filenames before any PDF is uploaded.</p>
-        </div>
-
-        <label
-          className="teacher-upload-dropzone"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => {
-            event.preventDefault()
-            void prepareTeacherFiles(Array.from(event.dataTransfer.files))
-          }}
-        >
-          <span className="teacher-upload-icon">＋</span>
-          <strong>Select question papers</strong>
-          <span>Choose PDFs or select a folder containing question and answer-key files.</span>
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            multiple
-            disabled={teacherUploading}
-            // @ts-expect-error webkitdirectory is supported by Chromium, Safari, and iPadOS browsers.
-            webkitdirectory=""
-            onChange={(event) => {
-              void prepareTeacherFiles(Array.from(event.target.files ?? []))
-              event.currentTarget.value = ""
-            }}
-          />
-        </label>
-
-        {teacherFiles.length > 0 && (
-          <div className="teacher-upload-review" aria-busy={teacherPairing}>
-            <div className="teacher-upload-summary">
-              <strong>
-                {teacherPairing
-                  ? "AI is matching files..."
-                  : teacherPairingFailed
-                    ? "Matching failed — files kept"
-                    : `${teacherFilePreview.pairs.length} paper${teacherFilePreview.pairs.length === 1 ? "" : "s"} ready`}
-              </strong>
-              <span>{teacherFiles.length} file{teacherFiles.length === 1 ? "" : "s"} selected</span>
-            </div>
-
-            {teacherPairing && (
-              <p className="status">
-                {pairingElapsedSeconds}s elapsed · Checking filenames, not PDF contents.
-              </p>
-            )}
-            {teacherPairingFailed && (
-              <div className="upload-warning" role="alert">
-                <strong>{teacherUploadStatus}</strong>
-                <span>You can retry without selecting the files again.</span>
-              </div>
-            )}
-            {!teacherPairingManifest && (
-              <details className="selected-paper-files">
-                <summary>View selected filenames</summary>
-                <ul>
-                  {teacherFiles.map((selectedFile, index) => (
-                    <li key={index}>{selectedFile.webkitRelativePath || selectedFile.name}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            <div className="paper-pair-list">
-              {teacherFilePreview.pairs.map((pair: PaperFilePair) => {
-                const group = teacherPairingManifest?.groups.find(
-                  (candidate) =>
-                    teacherFiles[candidate.questionFileId] === pair.questionFile,
-                )
-
-                return (
-                  <div className="paper-pair" key={pair.paperId}>
-                    <strong>{pair.paperId}</strong>
-                    <span>Question paper · {pair.questionFile.name}</span>
-                    <span className={pair.answerFile ? "pair-answer" : "pair-warning"}>
-                      {pair.answerFile ? `Answer key · ${pair.answerFile.name}` : "No answer key matched · question-only import"}
-                    </span>
-                    {group && (
-                      <span className="pair-confidence">
-                        AI confidence · {Math.round(group.confidence * 100)}%
-                        {group.note ? ` · ${group.note}` : ""}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {teacherFilePreview.unmatched.length > 0 && (
-              <div className="upload-warning" role="status">
-                <strong>Files needing attention</strong>
-                {teacherFilePreview.unmatched.map((item: UnmatchedPaperFile) => (
-                  <span key={`${item.filename}-${item.reason}`}>{item.filename} · {item.reason}</span>
-                ))}
-              </div>
-            )}
-
-            <div className="teacher-upload-actions">
-              {teacherPairingFailed ? (
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={teacherUploading}
-                  onClick={() => void prepareTeacherFiles(teacherFiles)}
-                >
-                  Retry matching
-                </button>
-              ) : <button
-                className="primary-button"
-                type="button"
-                disabled={
-                  teacherUploading ||
-                  teacherPairing ||
-                  !teacherPairingManifest ||
-                  teacherFilePreview.pairs.length === 0
-                }
-                onClick={() => void analyseTeacherFiles()}
-              >
-                {teacherPairing
-                  ? "Matching filenames..."
-                  : teacherUploading
-                    ? "Analysing..."
-                    : "Analyse selected papers"}
-              </button>}
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={teacherUploading}
-                onClick={clearTeacherFiles}
-              >
-                Clear selection
-              </button>
-            </div>
-          </div>
-        )}
-
-        {teacherUploadStatus && !teacherPairingFailed && <p className="status" role="status">{teacherUploadStatus}</p>}
-      </section>
-
       <footer className="footer">
         TuitionAI <span>•</span> Designed for students
       </footer>
@@ -969,6 +702,9 @@ function StreaksView({
   onExamDateChange,
   monthlyStreak,
   yearlyStreak,
+  completedDays,
+  todayIso,
+  readOnly,
   onTrackProgress,
 }: {
   daysToExam: number
@@ -976,10 +712,13 @@ function StreaksView({
   onExamDateChange: (value: string) => void
   monthlyStreak: number
   yearlyStreak: number
+  completedDays: number[]
+  todayIso: string
+  readOnly: boolean
   onTrackProgress: () => void
 }) {
   const examDateRef = useRef<HTMLInputElement>(null)
-  const calendarDate = useMemo(() => new Date(), [])
+  const calendarDate = useMemo(() => new Date(`${todayIso}T12:00:00`), [todayIso])
   const calendarDays = useMemo(
     () => getCalendarDays(calendarDate),
     [calendarDate],
@@ -994,9 +733,9 @@ function StreaksView({
       <div className="stat-row">
         <Stat
           label="Days to exam"
-          value={String(daysToExam)}
+          value={examDate ? String(daysToExam) : "—"}
           action={
-            <div className="change-date">
+            !readOnly ? <div className="change-date">
               <button
                 type="button"
                 className="change-date-trigger"
@@ -1008,13 +747,22 @@ function StreaksView({
                 ref={examDateRef}
                 className="date-input"
                 type="date"
+                aria-label="Exam date"
                 min={getTodayIso()}
                 value={examDate}
                 onChange={(event) =>
                   onExamDateChange(event.target.value)
                 }
               />
-            </div>
+            </div> : <span className="status">
+              {examDate
+                ? new Date(`${examDate}T00:00:00`).toLocaleDateString("en-SG", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "No exam date set"}
+            </span>
           }
         />
         <Stat
@@ -1047,7 +795,17 @@ function StreaksView({
               className={`day ${day.isCurrentMonth ? "" : "muted"}`}
               key={`${day.day}-${index}`}
             >
-              <span className={day.isToday ? "today-marker" : ""}>
+              <span
+                className={[
+                  day.isToday ? "today-marker" : "",
+                  day.isCurrentMonth && completedDays.includes(day.day)
+                    ? "completed-marker"
+                    : "",
+                ].filter(Boolean).join(" ")}
+                aria-label={day.isCurrentMonth && completedDays.includes(day.day)
+                  ? `${day.day} ${currentMonthName}: completed`
+                  : undefined}
+              >
                 {day.day}
               </span>
             </div>
@@ -1074,7 +832,7 @@ function StreaksView({
         type="button"
         onClick={onTrackProgress}
       >
-        Track my progress <span>↗</span>
+        {readOnly ? "Track progress" : "Track my progress"} <span>↗</span>
       </button>
     </section>
   )
@@ -1114,7 +872,7 @@ function ProgressView({
         </div>
         <div className="student-summary">
           <strong>{studentName}</strong>
-          <span>Updated today · {rows.length} topics</span>
+          <span>{rows.length} topics · Mastery overview</span>
         </div>
       </div>
 
@@ -1179,7 +937,7 @@ function ProgressView({
           <i className="topic-dot needs" />
           Needs work
         </span>
-        <span>Click an attempt to inspect</span>
+        {rows.some((row) => row.attempts.length > 0) && <span>Click an attempt to inspect</span>}
       </div>
     </section>
   )

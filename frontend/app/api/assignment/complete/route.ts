@@ -5,25 +5,7 @@ import Attempt from "@/app/models/Attempt";
 import Submission from "@/app/models/Submissions";
 import Student from "@/app/models/Student";
 import { updateMasteryFromAssignment } from "@/lib/mastery";
-
-function getCompletionDateParts(date: Date) {
-    const yearStart = new Date(date.getFullYear(), 0, 1);
-    const currentDay = new Date(
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate(),
-    );
-    const yearDay = Math.floor(
-        (currentDay.getTime() - yearStart.getTime()) / 86400000,
-    ) + 1;
-
-    return {
-        year: date.getFullYear(),
-        month: date.getMonth() + 1,
-        dayOfMonth: date.getDate(),
-        dayOfYear: yearDay,
-    };
-}
+import { getStudyDay } from "@/lib/studyDate";
 
 export async function POST(request: Request) {
     try {
@@ -54,7 +36,7 @@ export async function POST(request: Request) {
         const student = await Student.findById(assignment.student);
 
         if (student) {
-            const completionDate = getCompletionDateParts(new Date());
+            const completionDate = getStudyDay();
 
             if (student.streak_year !== completionDate.year) {
                 student.year_streak = [];

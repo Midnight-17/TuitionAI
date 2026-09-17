@@ -34,3 +34,9 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+### Pre-deployment checklist
+
+- [ ] Measure teacher paper-import speed before choosing background jobs or concurrent analysis. Compare the same representative single-paper and folder batches on Gemini's free and paid tiers, timing filename matching, PDF upload, Gemini analysis (including retries), and database saving separately. Record batch sizes, total duration, and rate-limit failures; check these against the intended host's upload and request-timeout limits. Use the results to decide whether a tier change, bounded concurrency, or background processing is needed. Upload-speed changes are deferred until this measurement.
+
+The current flow matches filenames first, then uploads the PDFs for analysis. `/api/analyse` analyses each paper sequentially, validates the complete batch, and then saves it within the same request.
